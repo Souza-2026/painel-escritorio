@@ -22,7 +22,7 @@ h1{font-size:20px;margin:0 0 4px}
 #paginas canvas{width:100%;height:auto;display:block;border:1px solid var(--borda);border-radius:6px;margin-bottom:10px;background:#fff}
 label{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:600;color:#3A414D}
 input[type=text],input[inputmode]{border:1px solid #C5CBD4;border-radius:8px;min-height:48px;padding:0 12px;font:inherit;width:100%}
-.opcao{display:flex;align-items:center;gap:10px;border:1px solid #C5CBD4;border-radius:8px;padding:12px;font-weight:500;cursor:pointer}
+.opcao{display:flex;flex-direction:row;align-items:center;gap:10px;border:1px solid #C5CBD4;border-radius:8px;padding:12px;font-weight:500;cursor:pointer}
 .opcao input{width:22px;height:22px}
 .conc{flex-direction:row;align-items:flex-start;gap:10px;font-weight:500}
 .conc input{width:24px;height:24px;flex:none;margin-top:1px}
@@ -85,7 +85,10 @@ async function iniciar() {
   const pdf = await pdfjsLib.getDocument({ data: BYTES.slice() }).promise;
   for (let i = 1; i <= pdf.numPages; i++) {
     const pg = await pdf.getPage(i);
-    const vp = pg.getViewport({ scale: 1.6 });
+    // Nitidez para a tela do aparelho, sem desenhar maior que o necessario (celular simples trava).
+    const base = pg.getViewport({ scale: 1 });
+    const larg = $('#paginas').clientWidth || 360;
+    const vp = pg.getViewport({ scale: Math.min(2, larg * Math.min(window.devicePixelRatio || 1, 2) / base.width) });
     const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
     await pg.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
     $('#paginas').appendChild(c);
