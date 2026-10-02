@@ -136,7 +136,9 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
         <div><h1 id="c-titulo">Clientes</h1><div class="sub" id="c-sub"></div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn sec" id="gerar-mes">Lançar honorários do mês</button>
-          <button class="btn" data-ir="recebimentos">+ Lançar recebimento</button>
+          <button class="btn sec" id="novo-cliente">+ Novo cliente</button>
+          <button class="btn sec" id="ir-adiantamento">+ Adiantamento</button>
+          <button class="btn" id="ir-recebimento">+ Recebimento</button>
         </div>
       </div>
       <div class="kpis" id="kpis" style="margin-top:16px"></div>
@@ -157,9 +159,10 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
       <div class="topo"><div><h1>Recebimentos</h1><div class="sub">Lance o que entrou. Pagamento a mais vira crédito do cliente.</div></div></div>
       <div class="grade2" style="margin-top:16px;align-items:start" id="rec-grade">
         <form class="cartao form" id="form-rec">
-          <div class="pilulas" id="r-tipo" role="group" aria-label="Tipo de recebimento">
-            <button type="button" data-tipo="recebimento" class="ativo">Pagamento</button>
-            <button type="button" data-tipo="adiantamento">Adiantamento</button>
+          <div style="font-size:13px;font-weight:600;color:#3A414D">O que o cliente pagou?</div>
+          <div class="grade2" id="r-tipo" role="group" aria-label="Tipo de recebimento">
+            <button type="button" class="btn" data-tipo="recebimento">Pagamento do que deve</button>
+            <button type="button" class="btn sec" data-tipo="adiantamento">Adiantamento (antes do vencimento)</button>
           </div>
           <div class="sub" id="r-tipo-dica"></div>
           <label>Cliente <select id="r-cliente" required></select></label>
@@ -224,8 +227,10 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
     <div><div class="sub" id="x-info"></div><div style="font-size:20px;font-weight:600" id="x-saldo"></div></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button class="btn" id="x-receber">Receber</button>
+      <button class="btn sec" id="x-adiantar">Adiantamento</button>
       <button class="btn sec" id="x-extra">+ Extra</button>
       <button class="btn sec" id="x-pend">+ Pendência</button>
+      <button class="btn sec" id="x-editar">Editar cliente</button>
     </div>
   </div>
   <form id="form-extra" class="form oculto" style="border-top:1px solid var(--borda)">
@@ -247,6 +252,29 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
 </dialog>
 
 <!-- ---------------- DIALOGO: pendencia ---------------- -->
+<dialog id="dlg-cliente">
+  <div class="dlg-cab"><h2 id="k-titulo">Editar cliente</h2><button class="fechar" aria-label="Fechar" data-fechar>×</button></div>
+  <form class="form" id="form-cliente">
+    <label>Nome <input id="k-nome" required></label>
+    <div class="grade2">
+      <label>Escritório <select id="k-esc"><option value="CS">CS</option><option value="MS">MS</option></select></label>
+      <label>Honorário mensal <input id="k-hon" inputmode="decimal" class="mono" placeholder="0,00"></label>
+    </div>
+    <div class="grade2">
+      <label>Dia do pagamento <input id="k-dia" type="number" min="1" max="31"></label>
+      <label>Forma <select id="k-forma"><option value="">—</option><option>Depósito</option><option>Espécie</option><option>Os dois</option></select></label>
+    </div>
+    <div class="grade2">
+      <label>Paga 13º? <select id="k-13"><option value="false">Não</option><option value="true">Sim</option></select></label>
+      <label>Situação <select id="k-ativo"><option value="true">Ativo</option><option value="false">Inativo (sai das contas)</option></select></label>
+    </div>
+    <label>WhatsApp <input id="k-whats" inputmode="tel" placeholder="(91) 9 0000-0000"></label>
+    <label>Observação <input id="k-obs"></label>
+    <div class="sub">Mudar o honorário vale a partir do próximo mês lançado. O que já foi lançado não muda.</div>
+    <button class="btn" type="submit">Salvar</button>
+  </form>
+</dialog>
+
 <dialog id="dlg-pend">
   <div class="dlg-cab"><h2 id="p-titulo">Nova pendência</h2><button class="fechar" aria-label="Fechar" data-fechar>×</button></div>
   <form class="form" id="form-pend">
@@ -460,7 +488,55 @@ async function apagarLancamento(id) {
   if (error) return toast('Falhou: ' + error.message);
   await carregarClientes(); abrirExtrato(E.clienteAberto.id); telaClientes();
 }
-$('#x-receber').onclick = () => { const id = E.clienteAberto.id; fecharDialogos(); irPara('recebimentos'); $('#r-cliente').value = id; mostrarSaldoRec(); $('#r-valor').focus(); };
+function abrirRecebimento(tipo, clienteId) {
+  fecharDialogos(); irPara('recebimentos'); escolherTipoRec(tipo);
+  $('#r-valor').value = '';
+  if (clienteId) { $('#r-cliente').value = clienteId; mostrarSaldoRec(); $('#r-valor').focus(); } else $('#r-cliente').focus();
+}
+$('#x-receber').onclick = () => abrirRecebimento('recebimento', E.clienteAberto.id);
+$('#x-adiantar').onclick = () => abrirRecebimento('adiantamento', E.clienteAberto.id);
+$('#ir-recebimento').onclick = () => abrirRecebimento('recebimento');
+$('#ir-adiantamento').onclick = () => abrirRecebimento('adiantamento');
+
+/* ---------------- cadastro do cliente ---------------- */
+let clienteEditando = null;
+async function abrirCliente(id) {
+  clienteEditando = id;
+  $('#k-titulo').textContent = id ? 'Editar cliente' : 'Novo cliente';
+  let c = { nome: '', escritorio: 'CS', honorario: 0, dia_pagamento: null, forma_pagamento: 'Depósito', paga_13: false, ativo: true, whatsapp: '', observacao: '' };
+  if (id) {
+    const { data, error } = await sb.from('clientes').select('*').eq('id', id).single();
+    if (error) return toast('Falhou: ' + error.message);
+    c = data;
+  }
+  $('#k-nome').value = c.nome; $('#k-esc').value = c.escritorio || 'CS';
+  $('#k-hon').value = Number(c.honorario) ? Number(c.honorario).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '';
+  $('#k-dia').value = c.dia_pagamento || ''; $('#k-forma').value = c.forma_pagamento || '';
+  $('#k-13').value = String(!!c.paga_13); $('#k-ativo').value = String(c.ativo !== false);
+  $('#k-whats').value = c.whatsapp || ''; $('#k-obs').value = c.observacao || '';
+  fecharDialogos(); $('#dlg-cliente').showModal();
+}
+$('#x-editar').onclick = () => abrirCliente(E.clienteAberto.id);
+$('#novo-cliente').onclick = () => abrirCliente(null);
+$('#form-cliente').onsubmit = async ev => {
+  ev.preventDefault();
+  const hon = $('#k-hon').value.trim() === '' ? 0 : numero($('#k-hon').value);
+  if (!isFinite(hon) || hon < 0) return toast('Honorário inválido.');
+  const dia = $('#k-dia').value ? +$('#k-dia').value : null;
+  if (dia !== null && (dia < 1 || dia > 31)) return toast('Dia do pagamento entre 1 e 31.');
+  const reg = {
+    nome: $('#k-nome').value.trim().toUpperCase(), escritorio: $('#k-esc').value, honorario: hon,
+    dia_pagamento: dia, forma_pagamento: $('#k-forma').value || null,
+    paga_13: $('#k-13').value === 'true', ativo: $('#k-ativo').value === 'true',
+    whatsapp: $('#k-whats').value.trim() || null, observacao: $('#k-obs').value.trim() || null,
+  };
+  const r = clienteEditando
+    ? await sb.from('clientes').update(reg).eq('id', clienteEditando).select('id').single()
+    : await sb.from('clientes').insert(reg).select('id').single();
+  if (r.error) return toast(/duplicate|unique/i.test(r.error.message) ? 'Já existe um cliente com esse nome.' : 'Falhou: ' + r.error.message);
+  $('#dlg-cliente').close(); toast('Cliente salvo.');
+  await telaClientes(); abrirExtrato(r.data.id);
+};
 $('#x-pend').onclick = () => { const id = E.clienteAberto.id; fecharDialogos(); abrirPendencia(null, id); };
 $('#x-extra').onclick = () => {
   $('#form-extra').classList.toggle('oculto');
@@ -494,7 +570,7 @@ let tipoRec = 'recebimento';
 function proximoMes() { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
 function escolherTipoRec(t) {
   tipoRec = t;
-  $('#r-tipo').querySelectorAll('button').forEach(b => b.classList.toggle('ativo', b.dataset.tipo === t));
+  $('#r-tipo').querySelectorAll('button').forEach(b => b.classList.toggle('sec', b.dataset.tipo !== t));
   const adi = t === 'adiantamento';
   $('#r-tipo-dica').textContent = adi
     ? 'O cliente pagou antes do vencimento. Fica como crédito e abate o honorário do mês de referência quando ele for lançado.'
