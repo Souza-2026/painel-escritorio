@@ -9,6 +9,10 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="assinatura-pdf.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.10/pdfmake.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.10/vfs_fonts.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="contrato-modelo.js"></script>
 <!--
   Painel do Escritorio (CS + MS Contabil) -- clientes e saldos, recebimentos, pendencias.
   Banco: Supabase painel-escritorio (lnryjrhqkcvebwzbllwb). A chave abaixo e a PUBLICA:
@@ -98,6 +102,8 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
 .link{background:none;border:0;color:var(--azul);cursor:pointer;text-decoration:underline;padding:8px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--texto);color:#fff;padding:12px 18px;border-radius:8px;font-size:14px;z-index:99;max-width:calc(100vw - 32px)}
 .oculto{display:none!important}
+.ck{flex-direction:row!important;align-items:center;gap:10px;font-weight:500!important}
+.ck input{width:22px;height:22px;min-height:0;flex:none}
 @media (max-width:760px){
   #app:not(.oculto){display:block}
   aside.lado{position:sticky;height:auto;z-index:20;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px 10px}
@@ -238,7 +244,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
     <div id="aba-assinaturas" class="oculto">
       <div class="topo">
         <div><h1>Assinaturas</h1><div class="sub">Propostas e contratos que o cliente assina pelo celular, com o dedo.</div></div>
-        <button class="btn" id="novo-doc">+ Enviar documento</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sec" id="novo-doc">+ Enviar PDF pronto</button><button class="btn" id="novo-contrato">+ Contrato de serviços contábeis</button></div>
       </div>
       <div class="cartao" style="margin-top:16px">
         <table><thead><tr><th>Documento</th><th class="col-opc">Para</th><th>Situação</th><th></th></tr></thead>
@@ -315,6 +321,56 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
     <label>Observação <input id="k-obs"></label>
     <div class="sub">Mudar o honorário vale a partir do próximo mês lançado. O que já foi lançado não muda.</div>
     <button class="btn" type="submit">Salvar</button>
+  </form>
+</dialog>
+
+<dialog id="dlg-contrato" style="width:min(760px,calc(100vw - 32px))">
+  <div class="dlg-cab"><h2>Contrato de serviços contábeis</h2><button class="fechar" aria-label="Fechar" data-fechar>×</button></div>
+  <form class="form" id="form-contrato">
+    <label>Cliente do painel <select id="c-cli"></select></label>
+    <div class="cartao" style="padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--fundo)">
+      <div style="font-weight:600;font-size:14px">Preencher automaticamente</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">
+        <label style="flex:1;min-width:200px">CNPJ <input id="c-cnpj" inputmode="numeric" data-mascara="cpf" placeholder="00.000.000/0000-00" required></label>
+        <button type="button" class="btn sec" id="c-buscar">Buscar na Receita</button>
+        <button type="button" class="btn sec" id="c-pasta-btn">Ler documentos da pasta</button>
+        <input type="file" id="c-pasta" webkitdirectory multiple class="oculto">
+      </div>
+      <div class="sub" id="c-status">Digite o CNPJ e clique em Buscar. Para o CPF do responsável, aponte a pasta com o contrato de constituição, a alteração ou a foto da CNH.</div>
+    </div>
+    <label>Razão social <input id="c-razao" required></label>
+    <div class="grade2">
+      <label>Nome fantasia <input id="c-fant"></label>
+      <label>Regime <select id="c-regime"><option>Simples Nacional</option><option>Lucro Presumido</option><option>Lucro Real</option><option>MEI</option></select></label>
+    </div>
+    <div class="grade2">
+      <label>Natureza e porte <input id="c-nat"></label>
+      <label>Atividade principal <input id="c-ativ"></label>
+    </div>
+    <label>Endereço <input id="c-end"></label>
+    <div class="grade2">
+      <label>Responsável (quem assina) <input id="c-resp" required></label>
+      <label>CPF do responsável <input id="c-cpf" inputmode="numeric" data-mascara="cpf" placeholder="000.000.000-00"></label>
+    </div>
+    <label>WhatsApp do responsável <input id="c-whats" inputmode="tel" data-mascara="fone" placeholder="(91) 90000-0000"></label>
+    <div class="grade2">
+      <label>Honorário mensal <input id="c-hon" inputmode="decimal" class="mono" required></label>
+      <label>Dia do vencimento <input id="c-dia" type="number" min="1" max="31" required></label>
+    </div>
+    <div class="grade2">
+      <label>Multa por atraso (%) <input id="c-multa" inputmode="decimal" value="2"></label>
+      <label>Juros ao mês (%) <input id="c-juros" inputmode="decimal" value="1"></label>
+    </div>
+    <label>Foro <input id="c-foro" value="Belém/PA"></label>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <label class="ck"><input type="checkbox" id="c-dp" checked> Inclui departamento pessoal (folha, eSocial, FGTS)</label>
+      <label class="ck"><input type="checkbox" id="c-st"> Empresa compra mercadoria com ICMS-ST / antecipação (comércio)</label>
+      <label class="ck"><input type="checkbox" id="c-mei"> Está saindo do MEI para Microempresa</label>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+      <button type="button" class="btn sec" id="c-imprimir">Baixar PDF para assinar no papel</button>
+      <button type="submit" class="btn" id="c-enviar">Gerar e enviar para assinatura</button>
+    </div>
   </form>
 </dialog>
 
@@ -852,6 +908,206 @@ $('#form-doc').onsubmit = async ev => {
     if (confirm('Link pronto. Abrir o WhatsApp para enviar agora?')) enviarWhats(ins.data);
   } catch (e) { toast('Falhou: ' + e.message); }
   finally { $('#d-botao').disabled = false; $('#d-botao').textContent = 'Gerar link de assinatura'; }
+};
+
+/* ============================ CONTRATO DE SERVICOS CONTABEIS ============================ */
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+function cStatus(t) { $('#c-status').textContent = t; }
+
+$('#novo-contrato').onclick = () => {
+  $('#form-contrato').reset();
+  $('#c-cli').innerHTML = '<option value="">— cliente novo —</option>' +
+    E.clientes.filter(c => c.ativo).map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('');
+  cStatus('Digite o CNPJ e clique em Buscar. Para o CPF do responsável, aponte a pasta com o contrato de constituição, a alteração ou a foto da CNH.');
+  $('#dlg-contrato').showModal();
+};
+$('#c-cli').onchange = async () => {
+  const id = +$('#c-cli').value; if (!id) return;
+  const { data: c } = await sb.from('clientes').select('*').eq('id', id).single();
+  if (!c) return;
+  const v = (sel, val) => { if (val != null && val !== '') $(sel).value = val; };
+  v('#c-cnpj', c.cnpj ? mascaraCpf(c.cnpj) : ''); v('#c-razao', c.razao_social || c.nome); v('#c-nat', c.natureza);
+  v('#c-ativ', c.atividade); v('#c-end', c.endereco); v('#c-regime', c.regime); v('#c-resp', c.responsavel);
+  v('#c-cpf', c.responsavel_cpf ? mascaraCpf(c.responsavel_cpf) : ''); v('#c-whats', c.whatsapp ? mascaraFone(c.whatsapp) : '');
+  if (Number(c.honorario)) $('#c-hon').value = Number(c.honorario).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  v('#c-dia', c.dia_pagamento);
+  if (!c.razao_social && c.cnpj) buscarCnpj();
+};
+
+/* ---- Receita (BrasilAPI) ---- */
+async function buscarCnpj() {
+  const cnpj = $('#c-cnpj').value.replace(/\D/g, '');
+  if (cnpj.length !== 14) return toast('CNPJ precisa ter 14 números.');
+  cStatus('Consultando a Receita…');
+  try {
+    const r = await fetch('https://brasilapi.com.br/api/cnpj/v1/' + cnpj);
+    if (!r.ok) throw new Error(r.status === 404 ? 'CNPJ não encontrado.' : 'consulta indisponível (' + r.status + ')');
+    const d = await r.json();
+    const t = x => String(x || '').trim();
+    const titulo = s => s.toLowerCase().replace(/(^|\s)\S/g, m => m.toUpperCase());
+    $('#c-razao').value = t(d.razao_social);
+    if (t(d.nome_fantasia)) $('#c-fant').value = titulo(t(d.nome_fantasia));
+    $('#c-nat').value = [t(d.natureza_juridica), t(d.porte) && titulo(t(d.porte))].filter(Boolean).join(' · ');
+    if (d.cnae_fiscal) $('#c-ativ').value = String(d.cnae_fiscal).replace(/(\d{2})(\d{2})(\d)(\d{2})/, '$1.$2-$3-$4') + ' — ' + t(d.cnae_fiscal_descricao);
+    const rua = [t(d.descricao_tipo_de_logradouro), t(d.logradouro)].filter(Boolean).join(' ');
+    const end = [rua && (rua + (t(d.numero) ? ', nº ' + t(d.numero) : '')), t(d.complemento), titulo(t(d.bairro)),
+      titulo(t(d.municipio)) + '/' + t(d.uf), t(d.cep) && 'CEP ' + t(d.cep).replace(/(\d{5})(\d{3})/, '$1-$2')].filter(Boolean).join(', ');
+    if (end) $('#c-end').value = end;
+    $('#c-regime').value = d.opcao_pelo_mei && /individual/i.test(t(d.natureza_juridica)) && /MEI|MICRO EMPREENDEDOR/i.test(t(d.porte)) ? 'MEI'
+      : d.opcao_pelo_simples ? 'Simples Nacional' : 'Lucro Presumido';
+    // Responsavel: socio administrador; no empresario individual, o nome vem na razao social.
+    const adm = (d.qsa || []).find(q => /administrador/i.test(q.qualificacao_socio)) || (d.qsa || [])[0];
+    if (adm) $('#c-resp').value = titulo(t(adm.nome_socio));
+    else if (/individual/i.test(t(d.natureza_juridica))) $('#c-resp').value = titulo(t(d.razao_social).replace(/^[\d.\s]+/, ''));
+    $('#c-mei').checked = !!d.opcao_pelo_mei && $('#c-regime').value !== 'MEI';
+    cStatus('Dados da Receita preenchidos. Confira o regime e o endereço: a base pública pode estar alguns dias atrasada.' +
+      (rua ? '' : ' O endereço veio incompleto; complete à mão.'));
+  } catch (e) { cStatus('Não consegui consultar: ' + e.message); }
+}
+$('#c-buscar').onclick = buscarCnpj;
+
+/* ---- Documentos da pasta: PDF (texto) e foto (OCR) ---- */
+$('#c-pasta-btn').onclick = () => $('#c-pasta').click();
+function cpfValido(c) {
+  const d = c.replace(/\D/g, ''); if (d.length !== 11 || /^(\d)\1+$/.test(d)) return false;
+  const dv = n => { let s = 0; for (let i = 0; i < n; i++) s += +d[i] * (n + 1 - i); const r = (s * 10) % 11; return r === 10 ? 0 : r; };
+  return dv(9) === +d[9] && dv(10) === +d[10];
+}
+async function textoDoPdf(arq) {
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await arq.arrayBuffer()) }).promise;
+  let t = '';
+  for (let i = 1; i <= Math.min(pdf.numPages, 15); i++) t += (await (await pdf.getPage(i)).getTextContent()).items.map(x => x.str).join(' ') + '\n';
+  return t;
+}
+let tesseractPronto = null;
+async function textoDaFoto(arq) {
+  if (!tesseractPronto) tesseractPronto = new Promise((ok, falha) => { const sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'; sc.onload = ok; sc.onerror = falha; document.head.appendChild(sc); });
+  await tesseractPronto;
+  const r = await Tesseract.recognize(arq, 'por');
+  return r.data.text;
+}
+$('#c-pasta').onchange = async () => {
+  const arqs = [...$('#c-pasta').files].filter(f => /\.(pdf|jpe?g|png)$/i.test(f.name) && f.size < 15e6);
+  if (!arqs.length) return cStatus('Não achei PDF nem foto nessa pasta.');
+  // contrato, alteracao, CNPJ e CNH primeiro; o resto depois
+  const peso = f => /contrato|constitui|altera|requerimento|cnh|habilita|rg|identidade|cnpj|cart/i.test(f.name) ? 0 : 1;
+  arqs.sort((a, b) => peso(a) - peso(b));
+  const lista = arqs.slice(0, 12);
+  const achados = [];
+  for (const [i, f] of lista.entries()) {
+    cStatus(`Lendo ${i + 1} de ${lista.length}: ${f.name}…`);
+    try {
+      let t = /\.pdf$/i.test(f.name) ? await textoDoPdf(f) : '';
+      if (!t.replace(/\s/g, '') && !/\.pdf$/i.test(f.name)) t = await textoDaFoto(f);
+      if (t) achados.push({ arquivo: f.name, texto: t });
+    } catch (e) { /* arquivo protegido ou ilegivel: segue */ }
+  }
+  preencherDosDocumentos(achados);
+};
+function preencherDosDocumentos(achados) {
+  const tudo = achados.map(a => a.texto).join('\n');
+  const norm = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ');
+  const T = norm(tudo);
+  const feitos = [];
+  // CNPJ do documento, se ainda nao houver
+  if ($('#c-cnpj').value.replace(/\D/g, '').length !== 14) {
+    const m = T.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/);
+    if (m) { $('#c-cnpj').value = m[0]; feitos.push('CNPJ'); buscarCnpj(); }
+  }
+  // CPFs validos com a posicao no texto
+  const cpfs = [...T.matchAll(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g)].filter(m => cpfValido(m[0]));
+  if (!cpfs.length) { cStatus(`Li ${achados.length} documento(s), mas não encontrei CPF válido. ` + (feitos.length ? 'Preenchido: ' + feitos.join(', ') + '.' : '')); return; }
+  // escolhe o CPF mais perto do nome do responsavel; sem nome, o primeiro
+  const nome = norm($('#c-resp').value || '').trim();
+  let escolhido = cpfs[0];
+  if (nome) {
+    const partes = nome.split(' ').filter(p => p.length > 2);
+    const pos = (() => { const i = T.indexOf(nome); if (i >= 0) return i;
+      const j = partes.length ? T.indexOf(partes[0] + ' ' + (partes[1] || '')) : -1; return j; })();
+    if (pos >= 0) escolhido = cpfs.reduce((a, b) => Math.abs(b.index - pos) < Math.abs(a.index - pos) ? b : a);
+  } else {
+    // sem nome: tenta o nome que vem logo antes do primeiro CPF ("FULANO DE TAL, brasileiro, ... CPF")
+    const antes = T.slice(Math.max(0, cpfs[0].index - 220), cpfs[0].index);
+    const m = antes.match(/([A-Z]{2,}(?: (?:DE|DA|DO|DOS|DAS|E|[A-Z]{2,})){1,6})\s*,\s*(BRASILEIR|SOLTEIR|CASAD)/);
+    if (m) { $('#c-resp').value = m[1].toLowerCase().replace(/(^|\s)\S/g, x => x.toUpperCase()).replace(/ (De|Da|Do|Dos|Das|E) /g, s => s.toLowerCase()); feitos.push('responsável'); }
+  }
+  $('#c-cpf').value = mascaraCpf(escolhido[0].replace(/\D/g, '')); feitos.push('CPF');
+  cStatus(`Li ${achados.length} documento(s). Preenchido: ${feitos.join(', ')}. ` +
+    (cpfs.length > 1 ? `Encontrei ${new Set(cpfs.map(c => c[0].replace(/\D/g, ''))).size} CPFs; confira se é o do responsável.` : 'Confira antes de gerar.'));
+}
+
+/* ---- gerar ---- */
+function dadosContrato(eletronica) {
+  const hon = numero($('#c-hon').value);
+  if (!isFinite(hon) || hon <= 0) throw new Error('Informe o honorário.');
+  const dia = +$('#c-dia').value; if (!(dia >= 1 && dia <= 31)) throw new Error('Informe o dia do vencimento.');
+  if ($('#c-cnpj').value.replace(/\D/g, '').length !== 14) throw new Error('Informe o CNPJ.');
+  if (!$('#c-razao').value.trim() || !$('#c-resp').value.trim()) throw new Error('Razão social e responsável são obrigatórios.');
+  const hoje = new Date();
+  const endereco = $('#c-end').value.trim();
+  const cidade = (endereco.match(/([A-Za-zÀ-ú .]+)\/([A-Z]{2})/) || [])[0] || '';
+  return {
+    prestador: 'CS', razao: $('#c-razao').value.trim(), fantasia: $('#c-fant').value.trim(),
+    cnpj: $('#c-cnpj').value.replace(/\D/g, ''), natureza: $('#c-nat').value.trim(), atividade: $('#c-ativ').value.trim(),
+    endereco, cidade: cidade.trim(), regime: $('#c-regime').value, responsavel: $('#c-resp').value.trim(),
+    responsavelCpf: $('#c-cpf').value.replace(/\D/g, ''), honorario: hon, dia,
+    multa: ($('#c-multa').value || '2').replace('.', ','), juros: ($('#c-juros').value || '1').replace('.', ','),
+    foro: $('#c-foro').value.trim() || 'Belém/PA', dp: $('#c-dp').checked, icmsSt: $('#c-st').checked, transicaoMei: $('#c-mei').checked,
+    extras: E.extras.filter(e => Number(e.preco) > 0),
+    emissao: `${hoje.getDate()} de ${MESES[hoje.getMonth()]} de ${hoje.getFullYear()}`,
+    emissaoMes: `${MESES[hoje.getMonth()][0].toUpperCase() + MESES[hoje.getMonth()].slice(1)} de ${hoje.getFullYear()}`,
+    eletronica,
+  };
+}
+// O que foi digitado aqui atualiza o cadastro do cliente no painel.
+async function salvarCadastroDoContrato(d) {
+  const reg = { cnpj: d.cnpj, razao_social: d.razao, natureza: d.natureza || null, atividade: d.atividade || null,
+    endereco: d.endereco || null, regime: d.regime, responsavel: d.responsavel, responsavel_cpf: d.responsavelCpf || null,
+    honorario: d.honorario, dia_pagamento: d.dia };
+  const w = $('#c-whats').value.replace(/\D/g, ''); if (w) reg.whatsapp = $('#c-whats').value;
+  const id = +$('#c-cli').value;
+  if (id) return (await sb.from('clientes').update(reg).eq('id', id)).error ? null : id;
+  const r = await sb.from('clientes').insert({ nome: (d.fantasia || d.razao).toUpperCase(), escritorio: 'CS', ...reg }).select('id').single();
+  return r.error ? null : r.data.id;
+}
+const nomeArquivo = d => 'Contrato de Servicos Contabeis - ' + (d.fantasia || d.razao).replace(/[\\/:*?"<>|]/g, '');
+$('#c-imprimir').onclick = async () => {
+  try {
+    const d = dadosContrato(false);
+    cStatus('Gerando o PDF…');
+    const bytes = await gerarContratoBytes(d);
+    baixarArquivo(bytes, nomeArquivo(d) + '.pdf');
+    await salvarCadastroDoContrato(d); await carregarClientes();
+    cStatus('PDF baixado. Imprima e colha as duas assinaturas.');
+  } catch (e) { toast(e.message); }
+};
+$('#form-contrato').onsubmit = async ev => {
+  ev.preventDefault();
+  $('#c-enviar').disabled = true; $('#c-enviar').textContent = 'Gerando…';
+  try {
+    const d = dadosContrato(true);
+    const bytes = await gerarContratoBytes(d);
+    const hash = await sha256Hex(bytes);
+    const clienteId = await salvarCadastroDoContrato(d);
+    const ins = await sb.from('documentos').insert({
+      titulo: 'Proposta e Contrato de Serviços Contábeis — ' + (d.fantasia || d.razao), emissor: 'CS Assessoria Contábil',
+      cliente_id: clienteId, signatario_nome: d.responsavel, signatario_cpf: d.responsavelCpf || null,
+      signatario_whatsapp: $('#c-whats').value.trim() || null, arquivo_sha256: hash,
+    }).select('id,token,titulo,signatario_nome,signatario_whatsapp').single();
+    if (ins.error) throw ins.error;
+    const caminho = ins.data.token + '/documento.pdf';
+    const up = await sb.storage.from('documentos').upload(caminho, bytes, { contentType: 'application/pdf' });
+    if (up.error) { await sb.from('documentos').delete().eq('id', ins.data.id); throw up.error; }
+    const upd = await sb.from('documentos').update({ arquivo_path: caminho }).eq('id', ins.data.id);
+    if (upd.error) throw upd.error;
+    $('#dlg-contrato').close();
+    await carregarClientes(); await telaAssinaturas();
+    toast('Contrato gerado e pronto para assinar.');
+    if (confirm('Contrato pronto. Abrir o WhatsApp para enviar o link agora?')) enviarWhats(ins.data);
+  } catch (e) { toast('Falhou: ' + e.message); }
+  finally { $('#c-enviar').disabled = false; $('#c-enviar').textContent = 'Gerar e enviar para assinatura'; }
 };
 
 /* ============================ SERVICOS (tabela de precos) ============================ */
