@@ -1029,9 +1029,20 @@ function preencherDosDocumentos(achados) {
     if (pos >= 0) escolhido = cpfs.reduce((a, b) => Math.abs(b.index - pos) < Math.abs(a.index - pos) ? b : a);
   } else {
     // sem nome: tenta o nome que vem logo antes do primeiro CPF ("FULANO DE TAL, brasileiro, ... CPF")
-    const antes = T.slice(Math.max(0, cpfs[0].index - 220), cpfs[0].index);
-    const m = antes.match(/([A-Z]{2,}(?: (?:DE|DA|DO|DOS|DAS|E|[A-Z]{2,})){1,6})\s*,\s*(BRASILEIR|SOLTEIR|CASAD)/);
-    if (m) { $('#c-resp').value = m[1].toLowerCase().replace(/(^|\s)\S/g, x => x.toUpperCase()).replace(/ (De|Da|Do|Dos|Das|E) /g, s => s.toLowerCase()); feitos.push('responsável'); }
+    // Contratos da Jucepa: "FULANO DE TAL, NACIONALIDADE BRASILEIRA, NASCIDO EM ..., CPF Nº ..."
+    const antes = T.slice(Math.max(0, cpfs[0].index - 260), cpfs[0].index);
+    const m = antes.match(/([A-Z ]+?)\s*,\s*(?:NACIONALIDADE|BRASILEIR|SOLTEIR|CASAD|NASCID|DIVORCIAD|VIUV)/);
+    if (m) {
+      let palavras = m[1].trim().split(' ');
+      const corte = palavras.map(w => /^(LTDA|EIRELI|EPP|ME|SLU|LIMITADA|S\/A)$/.test(w)).lastIndexOf(true);
+      if (corte >= 0) palavras = palavras.slice(corte + 1);
+      palavras = palavras.slice(-6);
+      if (palavras.length >= 2) {
+        $('#c-resp').value = palavras.join(' ').toLowerCase().replace(/(^|\s)\S/g, x => x.toUpperCase())
+          .replace(/ (De|Da|Do|Dos|Das|E) /g, s2 => s2.toLowerCase());
+        feitos.push('responsável');
+      }
+    }
   }
   $('#c-cpf').value = mascaraCpf(escolhido[0].replace(/\D/g, '')); feitos.push('CPF');
   cStatus(`Li ${achados.length} documento(s). Preenchido: ${feitos.join(', ')}. ` +
