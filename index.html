@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="assinatura-pdf.js"></script>
 <!--
   Painel do Escritorio (CS + MS Contabil) -- clientes e saldos, recebimentos, pendencias.
   Banco: Supabase painel-escritorio (lnryjrhqkcvebwzbllwb). A chave abaixo e a PUBLICA:
@@ -140,6 +142,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
     <nav aria-label="Menu">
       <div class="grupo">
         <button data-aba="pendencias" class="ativo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"></path><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"></path></svg>Pendências<span class="cont oculto" id="cont-pend"></span></button>
+        <button data-aba="assinaturas"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>Assinaturas<span class="cont oculto" id="cont-ass"></span></button>
       </div>
       <div class="grupo fechado" id="grupo-fin">
         <button type="button" class="grupo-tit" id="tit-fin" aria-expanded="false" aria-controls="itens-fin">Financeiro<svg class="seta" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></button>
@@ -231,6 +234,18 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
         <div class="lista-p" id="l-pend"></div>
       </div>
     </div>
+    <!-- ---------------- ASSINATURAS ---------------- -->
+    <div id="aba-assinaturas" class="oculto">
+      <div class="topo">
+        <div><h1>Assinaturas</h1><div class="sub">Propostas e contratos que o cliente assina pelo celular, com o dedo.</div></div>
+        <button class="btn" id="novo-doc">+ Enviar documento</button>
+      </div>
+      <div class="cartao" style="margin-top:16px">
+        <table><thead><tr><th>Documento</th><th class="col-opc">Para</th><th>Situação</th><th></th></tr></thead>
+        <tbody id="t-docs"></tbody></table>
+      </div>
+    </div>
+
     <!-- ---------------- SERVICOS ---------------- -->
     <div id="aba-servicos" class="oculto">
       <div class="topo"><div><h1>Serviços</h1><div class="sub">Tabela de preços dos serviços extras. Edite direto no campo: grava ao sair dele.</div></div></div>
@@ -300,6 +315,26 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
     <label>Observação <input id="k-obs"></label>
     <div class="sub">Mudar o honorário vale a partir do próximo mês lançado. O que já foi lançado não muda.</div>
     <button class="btn" type="submit">Salvar</button>
+  </form>
+</dialog>
+
+<dialog id="dlg-doc">
+  <div class="dlg-cab"><h2>Enviar documento para assinar</h2><button class="fechar" aria-label="Fechar" data-fechar>×</button></div>
+  <form class="form" id="form-doc">
+    <label>Arquivo PDF <input type="file" id="d-arq" accept="application/pdf" required style="padding-top:10px"></label>
+    <label>Título <input id="d-tit" required placeholder="Ex.: Proposta de Serviços Contábeis"></label>
+    <div class="grade2">
+      <label>Emitido por <select id="d-emi"><option>CS Assessoria Contábil</option><option>MS Contábil</option><option>G-Tech</option></select></label>
+      <label>Cliente <select id="d-cli"></select></label>
+    </div>
+    <div class="grade2">
+      <label>Quem assina <input id="d-nome" required></label>
+      <label>CPF <input id="d-cpf" inputmode="numeric"></label>
+    </div>
+    <label>WhatsApp de quem assina <input id="d-whats" inputmode="tel" placeholder="(91) 9 0000-0000"></label>
+    <label>Opções para escolher (opcional, uma por linha)
+      <textarea id="d-opc" placeholder="Plano mensal — R$ 100,00 por mês&#10;Plano anual — R$ 1.000,00 por ano"></textarea></label>
+    <button class="btn" type="submit" id="d-botao">Gerar link de assinatura</button>
   </form>
 </dialog>
 
@@ -433,15 +468,16 @@ function abrirFinanceiro(abrir) {
 $('#tit-fin').onclick = () => abrirFinanceiro($('#grupo-fin').classList.contains('fechado'));
 document.querySelectorAll('[data-ir]').forEach(b => b.onclick = () => irPara(b.dataset.ir));
 function irPara(aba) {
-  if (!['clientes', 'recebimentos', 'pendencias', 'servicos'].includes(aba)) aba = 'pendencias';
-  if (aba !== 'pendencias') abrirFinanceiro(true);
+  if (!['clientes', 'recebimentos', 'pendencias', 'servicos', 'assinaturas'].includes(aba)) aba = 'pendencias';
+  if (!['pendencias', 'assinaturas'].includes(aba)) abrirFinanceiro(true);
   history.replaceState(null, '', '#' + aba);
   document.querySelectorAll('nav button[data-aba]').forEach(b => b.classList.toggle('ativo', b.dataset.aba === aba));
-  ['clientes', 'recebimentos', 'pendencias', 'servicos'].forEach(a => $('#aba-' + a).classList.toggle('oculto', a !== aba));
+  ['clientes', 'recebimentos', 'pendencias', 'servicos', 'assinaturas'].forEach(a => $('#aba-' + a).classList.toggle('oculto', a !== aba));
   if (aba === 'clientes') telaClientes();
   if (aba === 'recebimentos') telaRecebimentos();
   if (aba === 'pendencias') telaPendencias();
   if (aba === 'servicos') telaServicos();
+  if (aba === 'assinaturas') telaAssinaturas();
 }
 
 /* ============================ CLIENTES ============================ */
@@ -701,6 +737,97 @@ function listarCreditos() {
     : '<tr><td colspan="3" class="vazio">Nenhum cliente com crédito.</td></tr>';
   $('#t-cred').querySelectorAll('tr.clic').forEach(tr => tr.onclick = () => abrirExtrato(+tr.dataset.id));
 }
+
+/* ============================ ASSINATURAS ============================ */
+const LINK_ASSINAR = location.origin + location.pathname.replace(/[^/]*$/, '') + 'assinar.html?t=';
+async function telaAssinaturas() {
+  const { data, error } = await sb.from('documentos')
+    .select('id,token,titulo,emissor,signatario_nome,signatario_whatsapp,status,criado_em,visualizado_em,assinado_em,assinado_opcao,arquivo_path')
+    .neq('status', 'cancelado').order('criado_em', { ascending: false }).limit(100);
+  if (error) return toast('Não consegui carregar: ' + error.message);
+  const l = data || [];
+  const aguard = l.filter(d => d.status === 'aguardando').length;
+  $('#cont-ass').textContent = aguard; $('#cont-ass').classList.toggle('oculto', !aguard);
+  $('#t-docs').innerHTML = l.length ? l.map(d => {
+    const sit = d.status === 'assinado'
+      ? `<span class="tag t-ok">Assinado ${dataBR(d.assinado_em.slice(0, 10)).slice(0, 5)}</span>${d.assinado_opcao ? '<div class="sub" style="margin-top:4px">' + esc(d.assinado_opcao) + '</div>' : ''}`
+      : d.visualizado_em ? '<span class="tag t-aviso">Aberto, falta assinar</span>' : '<span class="tag t-info">Enviado</span>';
+    const acoes = d.status === 'assinado'
+      ? `<button class="btn sec" style="min-height:38px;padding:0 12px" data-via="${d.id}">Baixar assinado</button>`
+      : `<button class="btn sec" style="min-height:38px;padding:0 12px" data-zap="${d.id}">WhatsApp</button>
+         <button class="btn sec" style="min-height:38px;padding:0 12px" data-copiar="${d.id}">Copiar link</button>
+         <button class="btn perigo" style="min-height:38px;padding:0 12px" data-cancelar="${d.id}">Cancelar</button>`;
+    return `<tr><td><div style="font-weight:500">${esc(d.titulo)}</div><div class="sub">${esc(d.emissor)} · ${dataBR(d.criado_em.slice(0, 10))}</div></td>
+      <td class="col-opc">${esc(d.signatario_nome)}</td><td>${sit}</td>
+      <td class="dir"><div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">${acoes}</div></td></tr>`;
+  }).join('') : '<tr><td colspan="4" class="vazio">Nenhum documento enviado ainda.</td></tr>';
+  const acha = id => l.find(d => d.id === +id);
+  $('#t-docs').querySelectorAll('[data-copiar]').forEach(b => b.onclick = async () => {
+    try { await navigator.clipboard.writeText(LINK_ASSINAR + acha(b.dataset.copiar).token); toast('Link copiado.'); }
+    catch { prompt('Copie o link:', LINK_ASSINAR + acha(b.dataset.copiar).token); }
+  });
+  $('#t-docs').querySelectorAll('[data-zap]').forEach(b => b.onclick = () => enviarWhats(acha(b.dataset.zap)));
+  $('#t-docs').querySelectorAll('[data-cancelar]').forEach(b => b.onclick = async () => {
+    if (!confirm('Cancelar este documento? O link para de funcionar.')) return;
+    const { error } = await sb.from('documentos').update({ status: 'cancelado' }).eq('id', +b.dataset.cancelar);
+    if (error) return toast('Falhou: ' + error.message);
+    telaAssinaturas();
+  });
+  $('#t-docs').querySelectorAll('[data-via]').forEach(b => b.onclick = () => baixarVia(acha(b.dataset.via)));
+}
+function enviarWhats(d) {
+  const tel = String(d.signatario_whatsapp || '').replace(/\D/g, '');
+  const msg = `Olá, ${d.signatario_nome.split(' ')[0]}! Segue o documento "${d.titulo}" para leitura e assinatura pelo celular: ${LINK_ASSINAR + d.token}`;
+  window.open('https://wa.me/' + (tel ? (tel.length <= 11 ? '55' + tel : tel) : '') + '?text=' + encodeURIComponent(msg), '_blank');
+}
+async function baixarVia(d) {
+  toast('Gerando a via assinada…');
+  const { data: doc, error } = await sb.rpc('documento_publico', { p_token: d.token });
+  if (error || !doc) return toast('Falhou: ' + (error ? error.message : 'documento não encontrado'));
+  const url = sb.storage.from('documentos').getPublicUrl(doc.arquivo_path).data.publicUrl;
+  const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+  const via = await gerarViaAssinada(bytes, doc, d.token);
+  baixarArquivo(via, d.titulo.replace(/[\\/:*?"<>|]/g, '') + ' - assinado.pdf');
+}
+$('#novo-doc').onclick = () => {
+  $('#form-doc').reset();
+  $('#d-cli').innerHTML = '<option value="">—</option>' + E.clientes.filter(c => c.ativo).map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('');
+  $('#dlg-doc').showModal();
+};
+$('#d-cli').onchange = () => {
+  const c = E.clientes.find(x => x.id === +$('#d-cli').value);
+  if (c && c.escritorio) $('#d-emi').value = c.escritorio === 'MS' ? 'MS Contábil' : 'CS Assessoria Contábil';
+};
+$('#form-doc').onsubmit = async ev => {
+  ev.preventDefault();
+  const arq = $('#d-arq').files[0];
+  if (!arq || arq.type !== 'application/pdf') return toast('Escolha um arquivo PDF.');
+  if (arq.size > 10 * 1024 * 1024) return toast('O PDF passa de 10 MB.');
+  $('#d-botao').disabled = true; $('#d-botao').textContent = 'Enviando…';
+  try {
+    const bytes = new Uint8Array(await arq.arrayBuffer());
+    const hash = await sha256Hex(bytes);
+    const opcoes = $('#d-opc').value.split('\n').map(x => x.trim()).filter(Boolean);
+    const ins = await sb.from('documentos').insert({
+      titulo: $('#d-tit').value.trim(), emissor: $('#d-emi').value,
+      cliente_id: $('#d-cli').value ? +$('#d-cli').value : null,
+      signatario_nome: $('#d-nome').value.trim(), signatario_cpf: $('#d-cpf').value.replace(/\D/g, '') || null,
+      signatario_whatsapp: $('#d-whats').value.trim() || null, opcoes: opcoes.length ? opcoes : null,
+      arquivo_sha256: hash,
+    }).select('id,token,titulo,signatario_nome,signatario_whatsapp').single();
+    if (ins.error) throw ins.error;
+    const caminho = ins.data.token + '/documento.pdf';
+    const up = await sb.storage.from('documentos').upload(caminho, bytes, { contentType: 'application/pdf' });
+    if (up.error) { await sb.from('documentos').delete().eq('id', ins.data.id); throw up.error; }
+    const upd = await sb.from('documentos').update({ arquivo_path: caminho }).eq('id', ins.data.id);
+    if (upd.error) throw upd.error;
+    $('#dlg-doc').close();
+    toast('Link gerado.');
+    await telaAssinaturas();
+    if (confirm('Link pronto. Abrir o WhatsApp para enviar agora?')) enviarWhats(ins.data);
+  } catch (e) { toast('Falhou: ' + e.message); }
+  finally { $('#d-botao').disabled = false; $('#d-botao').textContent = 'Gerar link de assinatura'; }
+};
 
 /* ============================ SERVICOS (tabela de precos) ============================ */
 async function telaServicos() {

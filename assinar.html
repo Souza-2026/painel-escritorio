@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assinar documento</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="assinatura-pdf.js"></script>
+<style>
+:root{--azul:#1F3864;--fundo:#F4F5F7;--papel:#fff;--borda:#DDE1E7;--texto:#1B1F27;--apagado:#5A6270;--ok:#1D5A2E;--ok-f:#E2F2E6;--erro:#8A3A0A;--erro-f:#FDE7D9}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fundo);color:var(--texto);font:16px/1.45 'IBM Plex Sans',system-ui,sans-serif}
+header{background:var(--azul);color:#fff;padding:14px 16px;position:sticky;top:0;z-index:5}
+header .t{font-weight:600;font-size:16px}header .s{font-size:13px;color:#C9D3E6}
+main{max-width:760px;margin:0 auto;padding:16px 16px 60px;display:flex;flex-direction:column;gap:16px}
+.cartao{background:var(--papel);border:1px solid var(--borda);border-radius:12px;padding:16px}
+h1{font-size:20px;margin:0 0 4px}
+.sub{color:var(--apagado);font-size:14px}
+#paginas canvas{width:100%;height:auto;display:block;border:1px solid var(--borda);border-radius:6px;margin-bottom:10px;background:#fff}
+label{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:600;color:#3A414D}
+input[type=text],input[inputmode]{border:1px solid #C5CBD4;border-radius:8px;min-height:48px;padding:0 12px;font:inherit;width:100%}
+.opcao{display:flex;align-items:center;gap:10px;border:1px solid #C5CBD4;border-radius:8px;padding:12px;font-weight:500;cursor:pointer}
+.opcao input{width:22px;height:22px}
+.conc{flex-direction:row;align-items:flex-start;gap:10px;font-weight:500}
+.conc input{width:24px;height:24px;flex:none;margin-top:1px}
+#quadro{width:100%;height:200px;border:2px dashed #9AA5B5;border-radius:10px;background:#FAFBFC;touch-action:none;display:block}
+.btn{min-height:52px;border-radius:10px;border:1px solid var(--azul);background:var(--azul);color:#fff;font:600 17px 'IBM Plex Sans',sans-serif;cursor:pointer;width:100%}
+.btn.sec{background:#fff;color:var(--azul);border-color:#C5CBD4;min-height:44px;font-size:15px;width:auto;padding:0 16px}
+.btn:disabled{opacity:.5}
+.erro{background:var(--erro-f);color:var(--erro);border-radius:8px;padding:12px;font-size:14px}
+.ok{background:var(--ok-f);color:var(--ok);border-radius:8px;padding:14px;font-size:15px}
+.oculto{display:none!important}
+.form{display:flex;flex-direction:column;gap:14px}
+</style>
+</head>
+<body>
+<header><div class="t" id="h-emissor">Assinatura de documento</div><div class="s">Assinatura eletrônica · Lei 14.063/2020</div></header>
+<main>
+  <div class="cartao" id="topo"><h1 id="titulo">Carregando…</h1><div class="sub" id="para"></div></div>
+  <div id="msg"></div>
+  <div class="cartao" id="leitura"><div class="sub" style="margin-bottom:10px">Leia o documento até o final antes de assinar.</div><div id="paginas"></div></div>
+  <form class="cartao form oculto" id="form">
+    <div id="opcoes-box" class="form oculto"><div style="font-weight:600">Escolha uma opção</div><div id="opcoes" class="form"></div></div>
+    <label>Nome completo <input type="text" id="nome" autocomplete="name" required></label>
+    <label>CPF <input inputmode="numeric" id="cpf" placeholder="000.000.000-00" required></label>
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:end;margin-bottom:6px">
+        <span style="font-size:14px;font-weight:600;color:#3A414D">Assine com o dedo no quadro</span>
+        <button type="button" class="btn sec" id="limpar">Limpar</button>
+      </div>
+      <canvas id="quadro" aria-label="Quadro para assinatura"></canvas>
+    </div>
+    <label class="conc"><input type="checkbox" id="concordo" required> Li o documento por inteiro e concordo com o seu conteúdo.</label>
+    <button class="btn" type="submit" id="assinar">Assinar documento</button>
+  </form>
+  <div class="cartao oculto" id="feito">
+    <div class="ok" id="feito-txt"></div>
+    <button class="btn" style="margin-top:14px" id="baixar">Baixar minha via assinada</button>
+  </div>
+</main>
+<script>
+const sb = supabase.createClient('https://lnryjrhqkcvebwzbllwb.supabase.co', 'sb_publishable_r1Kda2TzysqXpXPklOjJFg_YEtbAkgG');
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const $ = s => document.querySelector(s);
+const token = new URLSearchParams(location.search).get('t') || '';
+let DOC = null, BYTES = null, HASH = '', rabiscou = false;
+
+function erro(m) { $('#msg').innerHTML = `<div class="erro">${m}</div>`; }
+
+async function iniciar() {
+  if (!token) { $('#titulo').textContent = 'Link inválido'; return erro('Peça um novo link ao escritório.'); }
+  const { data, error } = await sb.rpc('documento_publico', { p_token: token });
+  if (error || !data) { $('#titulo').textContent = 'Documento não encontrado'; return erro('O link pode ter expirado ou sido cancelado. Peça um novo link ao escritório.'); }
+  DOC = data;
+  $('#h-emissor').textContent = DOC.emissor;
+  $('#titulo').textContent = DOC.titulo;
+  $('#para').textContent = 'Para: ' + DOC.signatario_nome;
+  const url = sb.storage.from('documentos').getPublicUrl(DOC.arquivo_path).data.publicUrl;
+  BYTES = new Uint8Array(await (await fetch(url)).arrayBuffer());
+  HASH = await sha256Hex(BYTES);
+  if (HASH !== DOC.arquivo_sha256) return erro('O arquivo não confere com o registrado. Avise o escritório.');
+  const pdf = await pdfjsLib.getDocument({ data: BYTES.slice() }).promise;
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const pg = await pdf.getPage(i);
+    const vp = pg.getViewport({ scale: 1.6 });
+    const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
+    await pg.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+    $('#paginas').appendChild(c);
+  }
+  if (DOC.status === 'assinado') return mostrarFeito();
+  if (Array.isArray(DOC.opcoes) && DOC.opcoes.length) {
+    $('#opcoes-box').classList.remove('oculto');
+    $('#opcoes').innerHTML = DOC.opcoes.map((o, i) =>
+      `<label class="opcao"><input type="radio" name="opcao" value="${o.replace(/"/g, '&quot;')}" ${i ? '' : ''} required> ${o.replace(/</g, '&lt;')}</label>`).join('');
+  }
+  $('#nome').value = DOC.signatario_nome || '';
+  $('#cpf').value = DOC.signatario_cpf ? cpfFormatado(DOC.signatario_cpf) : '';
+  $('#form').classList.remove('oculto');
+  prepararQuadro();
+}
+
+function prepararQuadro() {
+  const c = $('#quadro'), ctx = c.getContext('2d');
+  const ajustar = () => { const r = c.getBoundingClientRect(), k = window.devicePixelRatio || 1;
+    c.width = r.width * k; c.height = r.height * k; ctx.setTransform(k, 0, 0, k, 0, 0);
+    ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#0B1F4D'; rabiscou = false; };
+  ajustar(); window.addEventListener('resize', ajustar);
+  let desenhando = false;
+  const pos = e => { const r = c.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  c.addEventListener('pointerdown', e => { desenhando = true; c.setPointerCapture(e.pointerId); const [x, y] = pos(e); ctx.beginPath(); ctx.moveTo(x, y); });
+  c.addEventListener('pointermove', e => { if (!desenhando) return; const [x, y] = pos(e); ctx.lineTo(x, y); ctx.stroke(); rabiscou = true; });
+  c.addEventListener('pointerup', () => { desenhando = false; });
+  $('#limpar').onclick = () => { ctx.clearRect(0, 0, c.width, c.height); rabiscou = false; };
+}
+
+// So o traco, recortado e com fundo branco: e o que vai para o registro.
+function assinaturaPng() {
+  const c = $('#quadro'), ctx = c.getContext('2d');
+  const { width: w, height: h } = c, d = ctx.getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = 0, y1 = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 0) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  const m = 12, cw = Math.min(w, x1 - x0 + 2 * m), ch = Math.min(h, y1 - y0 + 2 * m);
+  const o = document.createElement('canvas'); o.width = Math.max(cw, 10); o.height = Math.max(ch, 10);
+  const octx = o.getContext('2d'); octx.fillStyle = '#fff'; octx.fillRect(0, 0, o.width, o.height);
+  octx.drawImage(c, Math.max(0, x0 - m), Math.max(0, y0 - m), cw, ch, 0, 0, cw, ch);
+  // limita o tamanho para caber no registro
+  if (o.width > 900) { const r = document.createElement('canvas'); r.width = 900; r.height = Math.round(o.height * 900 / o.width);
+    r.getContext('2d').drawImage(o, 0, 0, r.width, r.height); return r.toDataURL('image/png'); }
+  return o.toDataURL('image/png');
+}
+
+$('#cpf').addEventListener('input', e => { const d = e.target.value.replace(/\D/g, '').slice(0, 11);
+  e.target.value = d.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2'); });
+
+$('#form').onsubmit = async ev => {
+  ev.preventDefault(); $('#msg').innerHTML = '';
+  if (!rabiscou) return erro('Faça a sua assinatura no quadro.');
+  const opcao = (document.querySelector('input[name=opcao]:checked') || {}).value || '';
+  $('#assinar').disabled = true; $('#assinar').textContent = 'Assinando…';
+  const { data, error } = await sb.rpc('assinar_documento', { p_token: token, p_nome: $('#nome').value, p_cpf: $('#cpf').value,
+    p_opcao: opcao, p_assinatura: assinaturaPng(), p_sha256: HASH });
+  $('#assinar').disabled = false; $('#assinar').textContent = 'Assinar documento';
+  if (error) return erro(error.message);
+  DOC = data; mostrarFeito(); window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+function mostrarFeito() {
+  $('#form').classList.add('oculto'); $('#feito').classList.remove('oculto');
+  $('#feito-txt').innerHTML = `<b>Documento assinado.</b><br>${DOC.assinado_nome} · ${dataHoraBelem(DOC.assinado_em)}` +
+    (DOC.assinado_opcao ? `<br>Opção: ${DOC.assinado_opcao}` : '');
+  $('#topo').after($('#feito'));
+}
+$('#baixar').onclick = async () => {
+  const via = await gerarViaAssinada(BYTES, DOC, token);
+  baixarArquivo(via, DOC.titulo.replace(/[\\/:*?"<>|]/g, '') + ' - assinado.pdf');
+};
+iniciar().catch(e => erro('Não consegui abrir o documento: ' + e.message));
+</script>
+</body>
+</html>
