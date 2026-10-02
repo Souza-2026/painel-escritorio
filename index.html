@@ -311,7 +311,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
       <label>Paga 13º? <select id="k-13"><option value="false">Não</option><option value="true">Sim</option></select></label>
       <label>Situação <select id="k-ativo"><option value="true">Ativo</option><option value="false">Inativo (sai das contas)</option></select></label>
     </div>
-    <label>WhatsApp <input id="k-whats" inputmode="tel" placeholder="(91) 9 0000-0000"></label>
+    <label>WhatsApp <input id="k-whats" inputmode="tel" placeholder="(91) 90000-0000" data-mascara="fone"></label>
     <label>Observação <input id="k-obs"></label>
     <div class="sub">Mudar o honorário vale a partir do próximo mês lançado. O que já foi lançado não muda.</div>
     <button class="btn" type="submit">Salvar</button>
@@ -329,11 +329,14 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
     </div>
     <div class="grade2">
       <label>Quem assina <input id="d-nome" required></label>
-      <label>CPF <input id="d-cpf" inputmode="numeric"></label>
+      <label>CPF <input id="d-cpf" inputmode="numeric" placeholder="000.000.000-00" data-mascara="cpf"></label>
     </div>
-    <label>WhatsApp de quem assina <input id="d-whats" inputmode="tel" placeholder="(91) 9 0000-0000"></label>
-    <label>Opções para escolher (opcional, uma por linha)
-      <textarea id="d-opc" placeholder="Plano mensal — R$ 100,00 por mês&#10;Plano anual — R$ 1.000,00 por ano"></textarea></label>
+    <label>WhatsApp de quem assina <input id="d-whats" inputmode="tel" placeholder="(91) 90000-0000" data-mascara="fone"></label>
+    <label style="flex-direction:row;align-items:center;gap:10px;font-weight:500">
+      <input type="checkbox" id="d-tem-opc" style="width:22px;height:22px;min-height:0;flex:none">
+      O cliente precisa escolher uma opção ao assinar (ex.: plano mensal ou anual)</label>
+    <label id="d-opc-l" class="oculto">Opções, uma por linha
+      <textarea id="d-opc" placeholder="Uma opção em cada linha"></textarea></label>
     <button class="btn" type="submit" id="d-botao">Gerar link de assinatura</button>
   </form>
 </dialog>
@@ -594,7 +597,7 @@ async function abrirCliente(id) {
   $('#k-hon').value = Number(c.honorario) ? Number(c.honorario).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '';
   $('#k-dia').value = c.dia_pagamento || ''; $('#k-forma').value = c.forma_pagamento || '';
   $('#k-13').value = String(!!c.paga_13); $('#k-ativo').value = String(c.ativo !== false);
-  $('#k-whats').value = c.whatsapp || ''; $('#k-obs').value = c.observacao || '';
+  $('#k-whats').value = mascaraFone(c.whatsapp || ''); $('#k-obs').value = c.observacao || '';
   fecharDialogos(); $('#dlg-cliente').showModal();
 }
 $('#x-editar').onclick = () => abrirCliente(E.clienteAberto.id);
@@ -789,8 +792,29 @@ async function baixarVia(d) {
   const via = await gerarViaAssinada(bytes, doc, d.token);
   baixarArquivo(via, d.titulo.replace(/[\\/:*?"<>|]/g, '') + ' - assinado.pdf');
 }
+/* Mascaras: CPF (ou CNPJ, se passar de 11 digitos) e telefone com DDD. */
+function mascaraCpf(v) {
+  const d = v.replace(/\D/g, '').slice(0, 14);
+  if (d.length <= 11) return d.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+  return d.replace(/(\d{2})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1/$2').replace(/(\d{4})(\d{1,2})$/, '$1-$2');
+}
+function mascaraFone(v) {
+  const d = v.replace(/\D/g, '').slice(0, 11);
+  if (d.length <= 2) return d ? '(' + d : '';
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+document.querySelectorAll('[data-mascara]').forEach(inp => inp.addEventListener('input', () => {
+  inp.value = inp.dataset.mascara === 'cpf' ? mascaraCpf(inp.value) : mascaraFone(inp.value);
+}));
+$('#d-tem-opc').onchange = () => {
+  $('#d-opc-l').classList.toggle('oculto', !$('#d-tem-opc').checked);
+  if ($('#d-tem-opc').checked) $('#d-opc').focus();
+};
 $('#novo-doc').onclick = () => {
   $('#form-doc').reset();
+  $('#d-opc-l').classList.add('oculto');
   $('#d-cli').innerHTML = '<option value="">—</option>' + E.clientes.filter(c => c.ativo).map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('');
   $('#dlg-doc').showModal();
 };
@@ -807,7 +831,8 @@ $('#form-doc').onsubmit = async ev => {
   try {
     const bytes = new Uint8Array(await arq.arrayBuffer());
     const hash = await sha256Hex(bytes);
-    const opcoes = $('#d-opc').value.split('\n').map(x => x.trim()).filter(Boolean);
+    const opcoes = $('#d-tem-opc').checked ? $('#d-opc').value.split('\n').map(x => x.trim()).filter(Boolean) : [];
+    if ($('#d-tem-opc').checked && opcoes.length < 2) throw new Error('Escreva pelo menos duas opções, uma por linha.');
     const ins = await sb.from('documentos').insert({
       titulo: $('#d-tit').value.trim(), emissor: $('#d-emi').value,
       cliente_id: $('#d-cli').value ? +$('#d-cli').value : null,
