@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel do Escritório</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!--
+  Painel do Escritorio (CS + MS Contabil) -- clientes e saldos, recebimentos, pendencias.
+  Banco: Supabase painel-escritorio (lnryjrhqkcvebwzbllwb). A chave abaixo e a PUBLICA:
+  sem login nao se le nada (RLS so libera quem esta em `equipe` com acessa_painel).
+-->
+<style>
+:root{
+  --azul:#1F3864; --azul-esc:#14264A; --fundo:#F4F5F7; --papel:#FFFFFF; --borda:#DDE1E7;
+  --borda-forte:#C5CBD4; --texto:#1B1F27; --apagado:#5A6270;
+  --ok:#1D5A2E; --ok-f:#E2F2E6; --aviso:#6B4E00; --aviso-f:#FFF1C2;
+  --erro:#8A3A0A; --erro-f:#FDE7D9; --info-f:#E3EAF6;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fundo);color:var(--texto);font:15px/1.4 'IBM Plex Sans',system-ui,sans-serif}
+button,input,select,textarea{font:inherit}
+.mono{font-family:'IBM Plex Mono',monospace}
+header{background:var(--azul);color:#fff;display:flex;align-items:center;gap:16px;padding:12px 20px;flex-wrap:wrap}
+.marca{display:flex;align-items:center;gap:12px;flex:1;min-width:200px}
+.selo{width:36px;height:36px;border-radius:8px;background:#fff;color:var(--azul);display:flex;align-items:center;justify-content:center;font-weight:700}
+.marca small{display:block;color:#C9D3E6;font-size:13px}
+nav{display:flex;gap:4px}
+nav button{background:transparent;border:0;color:#fff;padding:10px 14px;border-radius:6px;cursor:pointer;min-height:44px}
+nav button.ativo{background:#fff;color:var(--azul);font-weight:600}
+.sair{background:transparent;border:1px solid #8FA2C7;color:#fff;border-radius:6px;padding:8px 12px;cursor:pointer;min-height:40px}
+main{max-width:1200px;margin:0 auto;padding:24px 20px 60px;display:flex;flex-direction:column;gap:20px}
+h1{margin:0;font-size:24px;font-weight:600}
+.sub{color:var(--apagado);font-size:14px}
+.topo{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.btn{min-height:44px;padding:0 18px;border-radius:8px;border:1px solid var(--azul);background:var(--azul);color:#fff;font-weight:600;cursor:pointer}
+.btn.sec{background:#fff;color:var(--azul);border-color:var(--borda-forte)}
+.btn.perigo{background:#fff;color:var(--erro);border-color:#E5B9A0}
+.btn:disabled{opacity:.5;cursor:default}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.kpi{background:var(--papel);border:1px solid var(--borda);border-radius:10px;padding:16px 18px}
+.kpi .r{font-size:13px;color:var(--apagado)}
+.kpi .v{font-size:24px;font-weight:600;margin-top:4px}
+.cartao{background:var(--papel);border:1px solid var(--borda);border-radius:10px}
+.barra{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--borda);flex-wrap:wrap}
+.pilulas{display:flex;gap:6px;flex-wrap:wrap}
+.pilulas button{min-height:38px;padding:0 14px;border-radius:999px;border:1px solid var(--borda-forte);background:#fff;color:var(--azul);font-weight:600;cursor:pointer}
+.pilulas button.ativo{background:var(--azul);border-color:var(--azul);color:#fff}
+input,select,textarea{border:1px solid var(--borda-forte);border-radius:8px;padding:0 12px;min-height:44px;background:#fff;color:var(--texto);width:100%}
+textarea{padding:10px 12px;min-height:70px;resize:vertical}
+label{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:600;color:#3A414D}
+table{width:100%;border-collapse:collapse}
+th{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--apagado);text-align:left;padding:10px 16px;border-bottom:1px solid var(--borda)}
+td{padding:11px 16px;border-bottom:1px solid #EEF0F3;font-size:14px}
+tr.clic{cursor:pointer} tr.clic:hover td{background:#F8F9FB}
+.dir{text-align:right}.cen{text-align:center}
+.tag{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.t-cs{background:var(--azul);color:#fff}.t-ms{background:#D9DEE7;color:var(--azul)}
+.t-ok{background:var(--ok-f);color:var(--ok)}.t-aviso{background:var(--aviso-f);color:var(--aviso)}
+.t-erro{background:var(--erro-f);color:var(--erro)}.t-info{background:var(--info-f);color:var(--azul)}.t-cinza{background:#EEF0F3;color:var(--apagado)}
+.grade2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.form{padding:16px;display:flex;flex-direction:column;gap:14px}
+.vazio{padding:28px 16px;text-align:center;color:var(--apagado)}
+.lista-p{display:flex;flex-direction:column;gap:10px;padding:16px}
+.pend{background:#fff;border:1px solid var(--borda);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.pend .l1{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.pend .cli{font-size:12px;font-weight:600;color:var(--azul)}
+.pend .txt{font-size:15px;font-weight:500;white-space:pre-wrap}
+.pend .l3{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--apagado)}
+.pend .acoes{display:flex;gap:6px;flex-wrap:wrap}
+.pend .acoes button{min-height:36px;padding:0 10px;border-radius:6px;border:1px solid var(--borda-forte);background:#fff;color:var(--azul);font-weight:600;font-size:13px;cursor:pointer}
+dialog{border:0;border-radius:12px;padding:0;width:min(560px,calc(100vw - 32px));max-height:calc(100vh - 32px)}
+dialog::backdrop{background:rgba(20,38,74,.45)}
+.dlg-cab{display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid var(--borda)}
+.dlg-cab h2{margin:0;font-size:18px}
+.fechar{background:transparent;border:0;font-size:22px;cursor:pointer;width:44px;height:44px;color:var(--apagado)}
+.extrato td{padding:9px 16px}
+.aviso{padding:10px 12px;border-radius:8px;background:var(--aviso-f);color:var(--aviso);font-size:13px}
+.erro{padding:10px 12px;border-radius:8px;background:var(--erro-f);color:var(--erro);font-size:13px}
+#login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+#login .cartao{width:min(380px,100%);padding:28px;display:flex;flex-direction:column;gap:14px}
+.link{background:none;border:0;color:var(--azul);cursor:pointer;text-decoration:underline;padding:8px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--texto);color:#fff;padding:12px 18px;border-radius:8px;font-size:14px;z-index:99;max-width:calc(100vw - 32px)}
+.oculto{display:none!important}
+@media (max-width:760px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .col-opc{display:none}
+  th,td{padding:10px 10px}
+  main{padding:16px 12px 60px}
+  header{padding:10px 12px}
+  nav{width:100%;justify-content:space-between}
+  nav button{flex:1;padding:10px 6px}
+}
+</style>
+</head>
+<body>
+
+<!-- ============================ LOGIN ============================ -->
+<section id="login" class="oculto">
+  <form class="cartao" id="form-login">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="selo" style="background:var(--azul);color:#fff">CS</div>
+      <div><div style="font-weight:600;font-size:18px">Painel do Escritório</div>
+      <div class="sub">CS · MS Contábil</div></div>
+    </div>
+    <div id="lembrados"></div>
+    <label>E-mail <input id="l-email" type="email" autocomplete="username" required></label>
+    <label>Senha <input id="l-senha" type="password" autocomplete="current-password" required minlength="6"></label>
+    <div id="l-msg"></div>
+    <button class="btn" id="l-botao" type="submit">Entrar</button>
+    <button class="link" type="button" id="l-modo">Primeiro acesso — criar minha senha</button>
+  </form>
+</section>
+
+<!-- ============================ APP ============================ -->
+<section id="app" class="oculto">
+  <header>
+    <div class="marca"><div class="selo">CS</div>
+      <div><div style="font-weight:600;font-size:17px">Painel do Escritório</div><small>CS · MS Contábil</small></div></div>
+    <nav>
+      <button data-aba="clientes" class="ativo">Clientes</button>
+      <button data-aba="recebimentos">Recebimentos</button>
+      <button data-aba="pendencias">Pendências</button>
+    </nav>
+    <button class="sair" id="sair">Sair</button>
+  </header>
+
+  <main>
+    <!-- ---------------- CLIENTES ---------------- -->
+    <div id="aba-clientes">
+      <div class="topo">
+        <div><h1 id="c-titulo">Clientes</h1><div class="sub" id="c-sub"></div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn sec" id="gerar-mes">Lançar honorários do mês</button>
+          <button class="btn" data-ir="recebimentos">+ Lançar recebimento</button>
+        </div>
+      </div>
+      <div class="kpis" id="kpis" style="margin-top:16px"></div>
+      <div class="cartao" style="margin-top:16px">
+        <div class="barra">
+          <div class="pilulas" id="filtro-esc"></div>
+          <input id="busca" placeholder="Buscar cliente" style="max-width:260px">
+        </div>
+        <table>
+          <thead><tr><th>Cliente</th><th>Escr.</th><th class="dir col-opc">Honorário</th><th class="cen col-opc">Vence</th><th class="dir">Saldo</th><th class="dir">Situação</th></tr></thead>
+          <tbody id="t-clientes"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ---------------- RECEBIMENTOS ---------------- -->
+    <div id="aba-recebimentos" class="oculto">
+      <div class="topo"><div><h1>Recebimentos</h1><div class="sub">Lance o que entrou. Pagamento a mais vira crédito do cliente.</div></div></div>
+      <div class="grade2" style="margin-top:16px;align-items:start" id="rec-grade">
+        <form class="cartao form" id="form-rec">
+          <label>Cliente <select id="r-cliente" required></select></label>
+          <div class="sub" id="r-saldo"></div>
+          <label>Valor recebido <input id="r-valor" inputmode="decimal" required placeholder="0,00" class="mono" style="font-size:20px"></label>
+          <div class="grade2">
+            <label>Forma <select id="r-forma"><option>Depósito</option><option>Espécie</option></select></label>
+            <label>Data <input id="r-data" type="date" required></label>
+          </div>
+          <label>Referente ao mês <input id="r-comp" type="month"></label>
+          <label>Observação <input id="r-obs" placeholder="opcional"></label>
+          <button class="btn" type="submit" id="r-botao">Lançar recebimento</button>
+        </form>
+        <div class="cartao">
+          <div class="barra"><strong id="rec-tit">Recebidos no mês</strong><input type="month" id="rec-mes" style="max-width:170px"></div>
+          <table><thead><tr><th>Data</th><th>Cliente</th><th class="col-opc">Forma</th><th class="dir">Valor</th><th></th></tr></thead>
+          <tbody id="t-rec"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------------- PENDENCIAS ---------------- -->
+    <div id="aba-pendencias" class="oculto">
+      <div class="topo">
+        <div><h1>Pendências</h1><div class="sub">O que os clientes pediram, quem está com cada uma e o prazo.</div></div>
+        <button class="btn" id="nova-pend">+ Nova pendência</button>
+      </div>
+      <div class="cartao" style="margin-top:16px">
+        <div class="barra">
+          <div class="pilulas" id="filtro-pend"></div>
+          <select id="filtro-resp" style="max-width:220px"></select>
+        </div>
+        <div class="lista-p" id="l-pend"></div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- ---------------- DIALOGO: extrato do cliente ---------------- -->
+<dialog id="dlg-extrato">
+  <div class="dlg-cab"><h2 id="x-titulo"></h2><button class="fechar" aria-label="Fechar" data-fechar>×</button></div>
+  <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+    <div><div class="sub" id="x-info"></div><div style="font-size:20px;font-weight:600" id="x-saldo"></div></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn" id="x-receber">Receber</button>
+      <button class="btn sec" id="x-extra">+ Extra</button>
+      <button class="btn sec" id="x-pend">+ Pendência</button>
+    </div>
+  </div>
+  <form id="form-extra" class="form oculto" style="border-top:1px solid var(--borda)">
+    <div class="grade2">
+      <label>Tipo <select id="e-tipo"><option value="extra">Serviço extra</option><option value="reembolso">Reembolso (guia/taxa paga por nós)</option><option value="ajuste">Ajuste de saldo</option></select></label>
+      <label>Serviço <select id="e-servico"></select></label>
+    </div>
+    <div class="grade2">
+      <label>Valor <input id="e-valor" inputmode="decimal" required class="mono"></label>
+      <label>Data <input id="e-data" type="date" required></label>
+    </div>
+    <label>Descrição <input id="e-desc" required></label>
+    <div class="sub" id="e-dica"></div>
+    <button class="btn" type="submit">Lançar</button>
+  </form>
+  <div style="max-height:50vh;overflow:auto;border-top:1px solid var(--borda)">
+    <table class="extrato"><tbody id="x-linhas"></tbody></table>
+  </div>
+</dialog>
+
+<!-- ---------------- DIALOGO: pendencia ---------------- -->
+<dialog id="dlg-pend">
+  <div class="dlg-cab"><h2 id="p-titulo">Nova pendência</h2><button class="fechar" aria-label="Fechar" data-fechar>×</button></div>
+  <form class="form" id="form-pend">
+    <label>Cliente <select id="p-cliente"></select></label>
+    <label>O que foi pedido <textarea id="p-desc" required></textarea></label>
+    <div class="grade2">
+      <label>Responsável <select id="p-resp"></select></label>
+      <label>Prazo <input id="p-prazo" type="date"></label>
+    </div>
+    <label id="p-status-l">Situação <select id="p-status">
+      <option value="aberta">Aberta</option><option value="em_andamento">Em andamento</option>
+      <option value="aguardando_cliente">Aguardando cliente</option><option value="concluida">Concluída</option>
+      <option value="cancelada">Cancelada</option></select></label>
+    <button class="btn" type="submit">Salvar</button>
+  </form>
+</dialog>
+
+<script>
+const SUPA_URL = 'https://lnryjrhqkcvebwzbllwb.supabase.co';
+const SUPA_CHAVE = 'sb_publishable_r1Kda2TzysqXpXPklOjJFg_YEtbAkgG';
+const sb = supabase.createClient(SUPA_URL, SUPA_CHAVE);
+
+const $ = s => document.querySelector(s);
+const brl = v => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const hojeISO = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+const mesISO = () => hojeISO().slice(0, 7);
+const dataBR = iso => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '';
+const mesBR = iso => { const n = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro']; return n[+iso.slice(5, 7) - 1] + ' de ' + iso.slice(0, 4); };
+// "1.621,00", "1621.5", "1621" -> número
+const numero = s => { s = String(s || '').trim().replace(/[R$\s]/g, ''); if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.'); const n = parseFloat(s); return isFinite(n) ? n : NaN; };
+function toast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 3500); }
+function fecharDialogos() { document.querySelectorAll('dialog[open]').forEach(d => d.close()); }
+document.querySelectorAll('[data-fechar]').forEach(b => b.onclick = () => b.closest('dialog').close());
+
+const E = { clientes: [], equipe: [], extras: [], eu: null, filtroEsc: 'Todos', filtroPend: 'abertas', filtroResp: '', clienteAberto: null, pendEditando: null };
+
+/* ============================ LOGIN ============================ */
+let modoCadastro = false;
+const LEMBRAR = 'painel-escritorio-emails';
+function lembrados() { try { return JSON.parse(localStorage.getItem(LEMBRAR) || '[]'); } catch { return []; } }
+function lembrar(email) { try { const l = [email, ...lembrados().filter(x => x !== email)].slice(0, 5); localStorage.setItem(LEMBRAR, JSON.stringify(l)); } catch {} }
+function mostrarLembrados() {
+  const l = lembrados(), box = $('#lembrados');
+  if (!l.length || modoCadastro) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="sub" style="margin-bottom:6px">Entrar como</div>' + l.map(e =>
+    `<button type="button" class="btn sec" style="width:100%;margin-bottom:6px;text-align:left" data-email="${esc(e)}">${esc(e)}</button>`).join('');
+  box.querySelectorAll('button').forEach(b => b.onclick = () => { $('#l-email').value = b.dataset.email; $('#l-senha').focus(); });
+  if (l.length === 1 && !$('#l-email').value) $('#l-email').value = l[0];
+}
+$('#l-modo').onclick = () => {
+  modoCadastro = !modoCadastro;
+  $('#l-botao').textContent = modoCadastro ? 'Criar senha' : 'Entrar';
+  $('#l-modo').textContent = modoCadastro ? 'Já tenho senha — entrar' : 'Primeiro acesso — criar minha senha';
+  $('#l-msg').innerHTML = modoCadastro ? '<div class="aviso">Use o e-mail que o Gary cadastrou na equipe. Depois confirme pelo link que chega no e-mail.</div>' : '';
+  mostrarLembrados();
+};
+$('#form-login').onsubmit = async ev => {
+  ev.preventDefault();
+  const email = $('#l-email').value.trim().toLowerCase(), password = $('#l-senha').value;
+  $('#l-botao').disabled = true; $('#l-msg').innerHTML = '';
+  try {
+    if (modoCadastro) {
+      const { error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.href.split('#')[0] } });
+      if (error) throw error;
+      $('#l-msg').innerHTML = '<div class="aviso">Senha criada. Abra o e-mail de confirmação e clique no link; depois entre aqui.</div>';
+      $('#l-modo').click();
+    } else {
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      lembrar(email);
+    }
+  } catch (e) {
+    const m = /Invalid login/i.test(e.message) ? 'E-mail ou senha não conferem.' : /not confirmed/i.test(e.message) ? 'Falta confirmar o e-mail: abra o link que chegou na sua caixa de entrada.' : e.message;
+    $('#l-msg').innerHTML = `<div class="erro">${esc(m)}</div>`;
+  } finally { $('#l-botao').disabled = false; }
+};
+$('#sair').onclick = () => sb.auth.signOut();
+
+sb.auth.onAuthStateChange((_ev, sessao) => { setTimeout(() => entrar(sessao), 0); });
+async function entrar(sessao) {
+  if (!sessao) { $('#app').classList.add('oculto'); $('#login').classList.remove('oculto'); mostrarLembrados(); return; }
+  const { data: membro } = await sb.rpc('eh_membro');
+  if (!membro) {
+    $('#login').classList.remove('oculto'); $('#app').classList.add('oculto');
+    $('#l-msg').innerHTML = '<div class="erro">Este e-mail não está liberado no painel. Peça ao Gary para cadastrar você na equipe.</div>';
+    await sb.auth.signOut(); return;
+  }
+  $('#login').classList.add('oculto'); $('#app').classList.remove('oculto');
+  await carregarBase(sessao.user.id);
+  irPara(location.hash.slice(1) || 'clientes');
+}
+
+/* ============================ BASE ============================ */
+async function carregarBase(uid) {
+  const [eq, ex] = await Promise.all([
+    sb.from('equipe').select('id,nome,user_id').order('id'),
+    sb.from('servicos_extras').select('id,nome,preco').eq('ativo', true).order('nome'),
+  ]);
+  E.equipe = eq.data || []; E.extras = ex.data || [];
+  E.eu = E.equipe.find(p => p.user_id === uid) || null;
+  await carregarClientes();
+}
+async function carregarClientes() {
+  const { data, error } = await sb.from('saldo_clientes').select('*').order('nome');
+  if (error) { toast('Não consegui carregar os clientes: ' + error.message); return; }
+  E.clientes = data || [];
+  const opcoes = E.clientes.filter(c => c.ativo).map(c => `<option value="${c.id}">${esc(c.nome)} · ${c.escritorio || '—'}</option>`).join('');
+  $('#r-cliente').innerHTML = '<option value="">Escolha o cliente</option>' + opcoes;
+  $('#p-cliente').innerHTML = '<option value="">Sem cliente (interno)</option>' + opcoes;
+  const resp = E.equipe.map(p => `<option value="${p.id}">${esc(p.nome)}</option>`).join('');
+  $('#p-resp').innerHTML = '<option value="">Sem responsável</option>' + resp;
+  $('#filtro-resp').innerHTML = '<option value="">Todos os responsáveis</option>' + resp;
+}
+
+/* ============================ ABAS ============================ */
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => irPara(b.dataset.aba));
+document.querySelectorAll('[data-ir]').forEach(b => b.onclick = () => irPara(b.dataset.ir));
+function irPara(aba) {
+  if (!['clientes', 'recebimentos', 'pendencias'].includes(aba)) aba = 'clientes';
+  history.replaceState(null, '', '#' + aba);
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('ativo', b.dataset.aba === aba));
+  ['clientes', 'recebimentos', 'pendencias'].forEach(a => $('#aba-' + a).classList.toggle('oculto', a !== aba));
+  if (aba === 'clientes') telaClientes();
+  if (aba === 'recebimentos') telaRecebimentos();
+  if (aba === 'pendencias') telaPendencias();
+}
+
+/* ============================ CLIENTES ============================ */
+function situacao(c) {
+  const dia = new Date().getDate();
+  if (Number(c.saldo) < 0) return ['Crédito ' + brl(-c.saldo), 't-ok'];
+  if (Number(c.saldo) === 0) return [Number(c.honorario) > 0 ? 'Em dia' : 'Não cobra', Number(c.honorario) > 0 ? 't-ok' : 't-cinza'];
+  if (!c.dia_pagamento) return ['Em aberto', 't-info'];
+  if (c.dia_pagamento < dia) return ['Venceu dia ' + String(c.dia_pagamento).padStart(2, '0'), 't-erro'];
+  if (c.dia_pagamento - dia <= 3) return [c.dia_pagamento === dia ? 'Vence hoje' : 'Vence em ' + (c.dia_pagamento - dia) + ' dias', 't-aviso'];
+  return ['Em aberto', 't-info'];
+}
+async function telaClientes() {
+  await carregarClientes();
+  const ativos = E.clientes.filter(c => c.ativo);
+  const ini = mesISO() + '-01';
+  const { data: rec } = await sb.from('recebimentos').select('valor,escritorio').gte('data', ini);
+  const recebido = (rec || []).reduce((s, r) => s + Number(r.valor), 0);
+  const { count: abertas } = await sb.from('pendencias').select('id', { count: 'exact', head: true }).in('status', ['aberta', 'em_andamento', 'aguardando_cliente']);
+  const porEsc = e => ativos.filter(c => c.escritorio === e);
+  const aReceber = l => l.reduce((s, c) => s + Math.max(0, Number(c.saldo)), 0);
+  $('#c-titulo').textContent = mesBR(hojeISO()).replace(/^./, m => m.toUpperCase());
+  $('#c-sub').textContent = ativos.length + ' clientes ativos · honorário mensal ' + brl(ativos.reduce((s, c) => s + Number(c.honorario), 0));
+  $('#kpis').innerHTML = [
+    ['A receber · CS', brl(aReceber(porEsc('CS'))), porEsc('CS').length + ' clientes'],
+    ['A receber · MS', brl(aReceber(porEsc('MS'))), porEsc('MS').length + ' clientes'],
+    ['Recebido no mês', brl(recebido), (rec || []).length + ' lançamentos'],
+    ['Pendências abertas', String(abertas ?? 0), 'abertas, em andamento ou aguardando'],
+  ].map(([r, v, s]) => `<div class="kpi"><div class="r">${r}</div><div class="v">${v}</div><div class="r">${s}</div></div>`).join('');
+  $('#filtro-esc').innerHTML = ['Todos', 'CS', 'MS', 'Devendo'].map(f => `<button class="${E.filtroEsc === f ? 'ativo' : ''}" data-f="${f}">${f}</button>`).join('');
+  $('#filtro-esc').querySelectorAll('button').forEach(b => b.onclick = () => { E.filtroEsc = b.dataset.f; telaClientes(); });
+  desenharClientes();
+}
+$('#busca').oninput = () => desenharClientes();
+function desenharClientes() {
+  const termo = $('#busca').value.trim().toLowerCase();
+  const l = E.clientes.filter(c => c.ativo)
+    .filter(c => E.filtroEsc === 'Todos' || (E.filtroEsc === 'Devendo' ? Number(c.saldo) > 0 : c.escritorio === E.filtroEsc))
+    .filter(c => !termo || c.nome.toLowerCase().includes(termo));
+  $('#t-clientes').innerHTML = l.length ? l.map(c => {
+    const [s, cls] = situacao(c);
+    return `<tr class="clic" data-id="${c.id}"><td style="font-weight:500">${esc(c.nome)}</td>
+      <td><span class="tag ${c.escritorio === 'CS' ? 't-cs' : 't-ms'}">${c.escritorio || '—'}</span></td>
+      <td class="dir mono col-opc">${Number(c.honorario) ? brl(c.honorario) : '—'}</td>
+      <td class="cen col-opc">${c.dia_pagamento ? String(c.dia_pagamento).padStart(2, '0') : '—'}</td>
+      <td class="dir mono" style="font-weight:600">${brl(c.saldo)}</td>
+      <td class="dir"><span class="tag ${cls}">${s}</span></td></tr>`;
+  }).join('') : '<tr><td colspan="6" class="vazio">Nenhum cliente neste filtro.</td></tr>';
+  $('#t-clientes').querySelectorAll('tr.clic').forEach(tr => tr.onclick = () => abrirExtrato(+tr.dataset.id));
+}
+$('#gerar-mes').onclick = async () => {
+  const mes = mesISO();
+  if (!confirm('Lançar o honorário de ' + mesBR(mes + '-01') + ' para todos os clientes ativos? Quem já tem o mês lançado não é lançado de novo.')) return;
+  const { data, error } = await sb.rpc('gerar_honorarios', { p_competencia: mes + '-01' });
+  if (error) return toast('Falhou: ' + error.message);
+  toast(data ? data + ' honorários lançados.' : 'O mês já estava lançado para todos.');
+  telaClientes();
+};
+
+/* ---------------- extrato ---------------- */
+const NOMES_TIPO = { honorario: 'Honorário', decimo_terceiro: '13º honorário', extra: 'Extra', reembolso: 'Reembolso', recebimento: 'Recebimento', ajuste: 'Ajuste' };
+async function abrirExtrato(id) {
+  const c = E.clientes.find(x => x.id === id); if (!c) return;
+  E.clienteAberto = c;
+  $('#form-extra').classList.add('oculto');
+  $('#x-titulo').textContent = c.nome;
+  $('#x-info').textContent = `${c.escritorio || '—'} · honorário ${Number(c.honorario) ? brl(c.honorario) : 'não cobra'}${c.dia_pagamento ? ' · vence dia ' + c.dia_pagamento : ''}${c.forma_pagamento ? ' · ' + c.forma_pagamento : ''}`;
+  $('#x-saldo').textContent = Number(c.saldo) < 0 ? 'Crédito ' + brl(-c.saldo) : 'Saldo ' + brl(c.saldo);
+  $('#x-linhas').innerHTML = '<tr><td class="vazio">Carregando…</td></tr>';
+  if (!$('#dlg-extrato').open) $('#dlg-extrato').showModal();
+  const { data } = await sb.from('lancamentos').select('id,data,tipo,valor,descricao,forma_pagamento').eq('cliente_id', id).order('data', { ascending: false }).order('id', { ascending: false }).limit(60);
+  $('#x-linhas').innerHTML = (data || []).length ? data.map(l => {
+    const credito = l.tipo === 'recebimento' || (l.tipo === 'ajuste' && l.valor < 0);
+    return `<tr><td style="width:90px">${dataBR(l.data).slice(0, 5)}</td>
+      <td>${esc(l.descricao || NOMES_TIPO[l.tipo])}${l.forma_pagamento ? ' <span class="sub">· ' + l.forma_pagamento + '</span>' : ''}</td>
+      <td class="dir mono" style="color:${credito ? 'var(--ok)' : 'inherit'}">${credito ? '− ' : '+ '}${brl(Math.abs(l.valor)).replace('R$ ', '')}</td>
+      <td style="width:44px"><button class="fechar" title="Apagar lançamento" aria-label="Apagar lançamento" data-apagar="${l.id}">🗑</button></td></tr>`;
+  }).join('') : '<tr><td class="vazio">Nenhum lançamento ainda.</td></tr>';
+  $('#x-linhas').querySelectorAll('[data-apagar]').forEach(b => b.onclick = () => apagarLancamento(+b.dataset.apagar));
+}
+async function apagarLancamento(id) {
+  if (!confirm('Apagar este lançamento? O saldo do cliente muda na hora.')) return;
+  const { error } = await sb.from('lancamentos').delete().eq('id', id);
+  if (error) return toast('Falhou: ' + error.message);
+  await carregarClientes(); abrirExtrato(E.clienteAberto.id); telaClientes();
+}
+$('#x-receber').onclick = () => { const id = E.clienteAberto.id; fecharDialogos(); irPara('recebimentos'); $('#r-cliente').value = id; mostrarSaldoRec(); $('#r-valor').focus(); };
+$('#x-pend').onclick = () => { const id = E.clienteAberto.id; fecharDialogos(); abrirPendencia(null, id); };
+$('#x-extra').onclick = () => {
+  $('#form-extra').classList.toggle('oculto');
+  $('#e-servico').innerHTML = '<option value="">—</option>' + E.extras.map(s => `<option value="${s.id}">${esc(s.nome)}${s.preco ? ' · ' + brl(s.preco) : ''}</option>`).join('');
+  $('#e-data').value = hojeISO(); $('#e-valor').value = ''; $('#e-desc').value = ''; $('#e-tipo').value = 'extra'; dicaExtra();
+};
+function dicaExtra() {
+  const t = $('#e-tipo').value;
+  $('#e-servico').closest('label').classList.toggle('oculto', t !== 'extra');
+  $('#e-dica').textContent = t === 'ajuste' ? 'Ajuste: valor positivo aumenta o que o cliente deve; negativo dá crédito a ele.' : t === 'reembolso' ? 'Guia ou taxa que o escritório pagou pelo cliente.' : '';
+}
+$('#e-tipo').onchange = dicaExtra;
+$('#e-servico').onchange = () => {
+  const s = E.extras.find(x => x.id === +$('#e-servico').value);
+  if (s) { $('#e-desc').value = s.nome; if (s.preco) $('#e-valor').value = Number(s.preco).toLocaleString('pt-BR', { minimumFractionDigits: 2 }); }
+};
+$('#form-extra').onsubmit = async ev => {
+  ev.preventDefault();
+  const tipo = $('#e-tipo').value, valor = numero($('#e-valor').value);
+  if (!isFinite(valor) || valor === 0 || (tipo !== 'ajuste' && valor < 0)) return toast('Valor inválido.');
+  const { error } = await sb.from('lancamentos').insert({
+    cliente_id: E.clienteAberto.id, tipo, valor, data: $('#e-data').value, descricao: $('#e-desc').value.trim(),
+    servico_extra_id: tipo === 'extra' && $('#e-servico').value ? +$('#e-servico').value : null,
+  });
+  if (error) return toast('Falhou: ' + error.message);
+  toast('Lançado.'); await carregarClientes(); abrirExtrato(E.clienteAberto.id); telaClientes();
+};
+
+/* ============================ RECEBIMENTOS ============================ */
+function telaRecebimentos() {
+  if (!$('#r-data').value) $('#r-data').value = hojeISO();
+  if (!$('#r-comp').value) $('#r-comp').value = mesISO();
+  if (!$('#rec-mes').value) $('#rec-mes').value = mesISO();
+  mostrarSaldoRec(); listarRecebimentos();
+}
+function mostrarSaldoRec() {
+  const c = E.clientes.find(x => x.id === +$('#r-cliente').value);
+  if (!c) { $('#r-saldo').textContent = ''; return; }
+  $('#r-saldo').innerHTML = Number(c.saldo) > 0 ? `Saldo devedor <strong class="mono">${brl(c.saldo)}</strong>` : Number(c.saldo) < 0 ? `Cliente tem crédito de <strong class="mono">${brl(-c.saldo)}</strong>` : 'Em dia.';
+  if (Number(c.saldo) > 0 && !$('#r-valor').value) $('#r-valor').value = Number(c.saldo).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  if (c.forma_pagamento && c.forma_pagamento !== 'Os dois') $('#r-forma').value = c.forma_pagamento;
+}
+$('#r-cliente').onchange = () => { $('#r-valor').value = ''; mostrarSaldoRec(); };
+$('#rec-mes').onchange = listarRecebimentos;
+$('#form-rec').onsubmit = async ev => {
+  ev.preventDefault();
+  const id = +$('#r-cliente').value, valor = numero($('#r-valor').value);
+  if (!id) return toast('Escolha o cliente.');
+  if (!isFinite(valor) || valor <= 0) return toast('Valor inválido.');
+  const c = E.clientes.find(x => x.id === id);
+  const comp = $('#r-comp').value ? $('#r-comp').value + '-01' : null;
+  $('#r-botao').disabled = true;
+  const { error } = await sb.from('lancamentos').insert({
+    cliente_id: id, tipo: 'recebimento', valor, data: $('#r-data').value, competencia: comp,
+    forma_pagamento: $('#r-forma').value,
+    descricao: 'Recebimento' + (comp ? ' ' + comp.slice(5, 7) + '/' + comp.slice(0, 4) : '') + ($('#r-obs').value.trim() ? ' — ' + $('#r-obs').value.trim() : ''),
+  });
+  $('#r-botao').disabled = false;
+  if (error) return toast('Falhou: ' + error.message);
+  toast(`${brl(valor)} de ${c.nome} lançado.`);
+  $('#r-valor').value = ''; $('#r-obs').value = ''; $('#r-cliente').value = '';
+  await carregarClientes(); mostrarSaldoRec(); listarRecebimentos();
+};
+async function listarRecebimentos() {
+  const mes = $('#rec-mes').value || mesISO();
+  const ini = mes + '-01', fim = new Date(+mes.slice(0, 4), +mes.slice(5, 7), 1);
+  const fimISO = fim.getFullYear() + '-' + String(fim.getMonth() + 1).padStart(2, '0') + '-01';
+  const { data } = await sb.from('recebimentos').select('*').gte('data', ini).lt('data', fimISO).order('data', { ascending: false }).order('id', { ascending: false });
+  const l = data || [];
+  const tot = e => l.filter(r => !e || r.escritorio === e).reduce((s, r) => s + Number(r.valor), 0);
+  $('#rec-tit').innerHTML = `Recebidos · ${brl(tot())} <span class="sub">(CS ${brl(tot('CS'))} · MS ${brl(tot('MS'))})</span>`;
+  $('#t-rec').innerHTML = l.length ? l.map(r => `<tr><td>${dataBR(r.data).slice(0, 5)}</td><td>${esc(r.cliente)} <span class="tag ${r.escritorio === 'CS' ? 't-cs' : 't-ms'}">${r.escritorio || ''}</span></td>
+    <td class="col-opc">${esc(r.forma_pagamento || '')}</td><td class="dir mono">${brl(r.valor)}</td>
+    <td style="width:44px"><button class="fechar" aria-label="Apagar recebimento" title="Apagar" data-apagar="${r.id}">🗑</button></td></tr>`).join('')
+    : '<tr><td colspan="5" class="vazio">Nenhum recebimento neste mês.</td></tr>';
+  $('#t-rec').querySelectorAll('[data-apagar]').forEach(b => b.onclick = async () => {
+    if (!confirm('Apagar este recebimento? O cliente volta a dever esse valor.')) return;
+    const { error } = await sb.from('lancamentos').delete().eq('id', +b.dataset.apagar);
+    if (error) return toast('Falhou: ' + error.message);
+    await carregarClientes(); listarRecebimentos();
+  });
+}
+
+/* ============================ PENDENCIAS ============================ */
+const STATUS = { aberta: ['Aberta', 't-info'], em_andamento: ['Em andamento', 't-aviso'], aguardando_cliente: ['Aguardando cliente', 't-cinza'], concluida: ['Concluída', 't-ok'], cancelada: ['Cancelada', 't-cinza'] };
+const FILTROS_P = { abertas: ['Abertas', ['aberta', 'em_andamento']], aguardando: ['Aguardando cliente', ['aguardando_cliente']], concluidas: ['Concluídas', ['concluida']], todas: ['Todas', null] };
+function telaPendencias() {
+  $('#filtro-pend').innerHTML = Object.entries(FILTROS_P).map(([k, [r]]) => `<button class="${E.filtroPend === k ? 'ativo' : ''}" data-f="${k}">${r}</button>`).join('');
+  $('#filtro-pend').querySelectorAll('button').forEach(b => b.onclick = () => { E.filtroPend = b.dataset.f; telaPendencias(); });
+  $('#filtro-resp').value = E.filtroResp;
+  listarPendencias();
+}
+$('#filtro-resp').onchange = () => { E.filtroResp = $('#filtro-resp').value; listarPendencias(); };
+async function listarPendencias() {
+  let q = sb.from('pendencias').select('id,descricao,prazo,status,criado_em,concluida_em,cliente_id,responsavel_id,origem,clientes(nome,escritorio),equipe(nome)');
+  const st = FILTROS_P[E.filtroPend][1];
+  if (st) q = q.in('status', st);
+  if (E.filtroResp) q = q.eq('responsavel_id', +E.filtroResp);
+  q = E.filtroPend === 'concluidas' ? q.order('concluida_em', { ascending: false }).limit(100) : q.order('prazo', { ascending: true, nullsFirst: false }).order('id');
+  const { data, error } = await q;
+  if (error) { $('#l-pend').innerHTML = `<div class="erro">${esc(error.message)}</div>`; return; }
+  const hoje = hojeISO();
+  $('#l-pend').innerHTML = (data || []).length ? data.map(p => {
+    const [st, cls] = STATUS[p.status];
+    let prazo = '', pcls = 't-info';
+    if (p.status === 'concluida') { prazo = 'Feita ' + dataBR((p.concluida_em || '').slice(0, 10)).slice(0, 5); pcls = 't-ok'; }
+    else if (p.prazo) { prazo = p.prazo < hoje ? 'Atrasada · ' + dataBR(p.prazo).slice(0, 5) : p.prazo === hoje ? 'Vence hoje' : 'Até ' + dataBR(p.prazo).slice(0, 5); pcls = p.prazo <= hoje ? 't-erro' : 't-info'; }
+    const aberta = !['concluida', 'cancelada'].includes(p.status);
+    return `<div class="pend">
+      <div class="l1"><span class="cli">${p.clientes ? esc(p.clientes.nome) + ' · ' + (p.clientes.escritorio || '') : 'Interno'}</span>${prazo ? `<span class="tag ${pcls}">${prazo}</span>` : ''}</div>
+      <div class="txt">${esc(p.descricao)}</div>
+      <div class="l3"><span>${p.equipe ? esc(p.equipe.nome) : 'Sem responsável'} · <span class="tag ${cls}">${st}</span></span>
+        <span class="acoes">
+          ${aberta && p.status !== 'em_andamento' ? `<button data-st="em_andamento" data-id="${p.id}">Começar</button>` : ''}
+          ${aberta && p.status !== 'aguardando_cliente' ? `<button data-st="aguardando_cliente" data-id="${p.id}">Aguardar cliente</button>` : ''}
+          ${aberta ? `<button data-st="concluida" data-id="${p.id}">Feita</button>` : `<button data-st="aberta" data-id="${p.id}">Reabrir</button>`}
+          <button data-editar="${p.id}">Editar</button>
+        </span></div></div>`;
+  }).join('') : '<div class="vazio">Nada aqui.</div>';
+  $('#l-pend').querySelectorAll('[data-st]').forEach(b => b.onclick = () => mudarStatus(+b.dataset.id, b.dataset.st));
+  $('#l-pend').querySelectorAll('[data-editar]').forEach(b => b.onclick = () => abrirPendencia(data.find(p => p.id === +b.dataset.editar)));
+}
+async function mudarStatus(id, status) {
+  const { error } = await sb.from('pendencias').update({ status, concluida_em: status === 'concluida' ? new Date().toISOString() : null }).eq('id', id);
+  if (error) return toast('Falhou: ' + error.message);
+  listarPendencias();
+}
+$('#nova-pend').onclick = () => abrirPendencia(null);
+function abrirPendencia(p, clienteId) {
+  E.pendEditando = p;
+  $('#p-titulo').textContent = p ? 'Editar pendência' : 'Nova pendência';
+  $('#p-cliente').value = p ? (p.cliente_id || '') : (clienteId || '');
+  $('#p-desc').value = p ? p.descricao : '';
+  $('#p-resp').value = p ? (p.responsavel_id || '') : (E.eu ? E.eu.id : '');
+  $('#p-prazo').value = p ? (p.prazo || '') : '';
+  $('#p-status').value = p ? p.status : 'aberta';
+  $('#p-status-l').classList.toggle('oculto', !p);
+  $('#dlg-pend').showModal(); $('#p-desc').focus();
+}
+$('#form-pend').onsubmit = async ev => {
+  ev.preventDefault();
+  const reg = {
+    cliente_id: $('#p-cliente').value ? +$('#p-cliente').value : null,
+    descricao: $('#p-desc').value.trim(),
+    responsavel_id: $('#p-resp').value ? +$('#p-resp').value : null,
+    prazo: $('#p-prazo').value || null,
+  };
+  let r;
+  if (E.pendEditando) {
+    const status = $('#p-status').value;
+    r = await sb.from('pendencias').update({ ...reg, status, concluida_em: status === 'concluida' ? (E.pendEditando.concluida_em || new Date().toISOString()) : null }).eq('id', E.pendEditando.id);
+  } else r = await sb.from('pendencias').insert(reg);
+  if (r.error) return toast('Falhou: ' + r.error.message);
+  $('#dlg-pend').close(); toast('Pendência salva.');
+  if (!$('#aba-pendencias').classList.contains('oculto')) listarPendencias(); else irPara('pendencias');
+};
+</script>
+</body>
+</html>
