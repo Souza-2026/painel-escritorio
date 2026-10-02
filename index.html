@@ -23,7 +23,7 @@
 body{margin:0;background:var(--fundo);color:var(--texto);font:15px/1.4 'IBM Plex Sans',system-ui,sans-serif}
 button,input,select,textarea{font:inherit}
 .mono{font-family:'IBM Plex Mono',monospace}
-header{background:var(--azul);color:#fff;display:flex;align-items:center;gap:16px;padding:12px 20px;flex-wrap:wrap}
+header{position:sticky;top:0;z-index:20;box-shadow:0 2px 8px rgba(20,38,74,.18);background:var(--azul);color:#fff;display:flex;align-items:center;gap:16px;padding:12px 20px;flex-wrap:wrap}
 .marca{display:flex;align-items:center;gap:12px;flex:1;min-width:200px}
 .selo{width:36px;height:36px;border-radius:8px;background:#fff;color:var(--azul);display:flex;align-items:center;justify-content:center;font-weight:700}
 .marca small{display:block;color:#C9D3E6;font-size:13px}
@@ -133,9 +133,11 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
     <!-- ---------------- CLIENTES ---------------- -->
     <div id="aba-clientes">
       <div class="topo">
-        <div><h1 id="c-titulo">Clientes</h1><div class="sub" id="c-sub"></div></div>
+        <div><h1 id="c-titulo">Clientes</h1><div class="sub" id="c-sub"></div>
+          <label style="flex-direction:row;align-items:center;gap:8px;margin-top:8px">Referência
+            <input type="month" id="c-ref" style="max-width:180px"></label></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn sec" id="gerar-mes">Lançar honorários do mês</button>
+          <button class="btn sec" id="gerar-mes">Lançar honorários</button>
           <button class="btn sec" id="novo-cliente">+ Novo cliente</button>
           <button class="btn sec" id="ir-adiantamento">+ Adiantamento</button>
           <button class="btn" id="ir-recebimento">+ Recebimento</button>
@@ -172,7 +174,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
             <label>Forma <select id="r-forma"><option>Depósito</option><option>Espécie</option></select></label>
             <label>Data <input id="r-data" type="date" required></label>
           </div>
-          <label>Referente ao mês <input id="r-comp" type="month"></label>
+          <label>Referente ao honorário de <input id="r-comp" type="month"></label>
           <label>Observação <input id="r-obs" placeholder="opcional"></label>
           <button class="btn" type="submit" id="r-botao">Lançar recebimento</button>
         </form>
@@ -243,6 +245,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
       <label>Data <input id="e-data" type="date" required></label>
     </div>
     <label>Descrição <input id="e-desc" required></label>
+    <label>Cobrar junto com o honorário de <input id="e-comp" type="month"></label>
     <div class="sub" id="e-dica"></div>
     <button class="btn" type="submit">Lançar</button>
   </form>
@@ -302,6 +305,10 @@ const brl = v => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractio
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const hojeISO = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
 const mesISO = () => hojeISO().slice(0, 7);
+// Regra do escritório: o que se recebe neste mês é o honorário do mês ANTERIOR.
+const mesAnterior = (m = mesISO()) => { const d = new Date(+m.slice(0, 4), +m.slice(5, 7) - 2, 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+const mesSeguinte = (m = mesISO()) => { const d = new Date(+m.slice(0, 4), +m.slice(5, 7), 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+const nomeMes = m => mesBR(m + '-01').replace(/ de \d{4}$/, '');
 const dataBR = iso => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '';
 const mesBR = iso => { const n = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro']; return n[+iso.slice(5, 7) - 1] + ' de ' + iso.slice(0, 4); };
 // "1.621,00", "1621.5", "1621" -> número
@@ -416,25 +423,30 @@ function situacao(c) {
 }
 async function telaClientes() {
   await carregarClientes();
+  if (!$('#c-ref').value) $('#c-ref').value = mesAnterior();
+  const ref = $('#c-ref').value;
   const ativos = E.clientes.filter(c => c.ativo);
-  const ini = mesISO() + '-01';
-  const { data: rec } = await sb.from('recebimentos').select('valor,escritorio').gte('data', ini);
-  const recebido = (rec || []).reduce((s, r) => s + Number(r.valor), 0);
-  const { count: abertas } = await sb.from('pendencias').select('id', { count: 'exact', head: true }).in('status', ['aberta', 'em_andamento', 'aguardando_cliente']);
-  const porEsc = e => ativos.filter(c => c.escritorio === e);
-  const aReceber = l => l.reduce((s, c) => s + Math.max(0, Number(c.saldo)), 0);
-  $('#c-titulo').textContent = mesBR(hojeISO()).replace(/^./, m => m.toUpperCase());
-  $('#c-sub').textContent = ativos.length + ' clientes ativos · honorário mensal ' + brl(ativos.reduce((s, c) => s + Number(c.honorario), 0));
+  const [{ data: q }, { count: abertas }] = await Promise.all([
+    sb.from('resumo_competencia').select('*').eq('competencia', ref + '-01'),
+    sb.from('pendencias').select('id', { count: 'exact', head: true }).in('status', ['aberta', 'em_andamento', 'aguardando_cliente']),
+  ]);
+  const soma = (campo, e) => (q || []).filter(r => !e || r.escritorio === e).reduce((t, r) => t + Number(r[campo] || 0), 0);
+  const linha = campo => `CS ${brl(soma(campo, 'CS'))} · MS ${brl(soma(campo, 'MS'))}`;
+  const aRec = soma('a_receber'), rec = soma('recebido'), falta = Math.max(0, aRec - rec);
+  $('#c-titulo').textContent = 'Honorários de ' + mesBR(ref + '-01');
+  $('#c-sub').textContent = 'Vencem em ' + nomeMes(mesSeguinte(ref)) + ' · ' + ativos.length + ' clientes ativos';
+  $('#gerar-mes').textContent = 'Lançar honorários de ' + nomeMes(ref);
   $('#kpis').innerHTML = [
-    ['A receber · CS', brl(aReceber(porEsc('CS'))), porEsc('CS').length + ' clientes'],
-    ['A receber · MS', brl(aReceber(porEsc('MS'))), porEsc('MS').length + ' clientes'],
-    ['Recebido no mês', brl(recebido), (rec || []).length + ' lançamentos'],
+    ['Total a receber', brl(aRec), linha('a_receber')],
+    ['Total recebido', brl(rec), linha('recebido')],
+    ['Falta receber', brl(falta), aRec ? Math.round(rec / aRec * 100) + '% recebido' : 'honorários ainda não lançados'],
     ['Pendências abertas', String(abertas ?? 0), 'abertas, em andamento ou aguardando'],
-  ].map(([r, v, s]) => `<div class="kpi"><div class="r">${r}</div><div class="v">${v}</div><div class="r">${s}</div></div>`).join('');
+  ].map(([r, v, t]) => `<div class="kpi"><div class="r">${r}</div><div class="v">${v}</div><div class="r">${t}</div></div>`).join('');
   $('#filtro-esc').innerHTML = ['Todos', 'CS', 'MS', 'Devendo', 'Com crédito'].map(f => `<button class="${E.filtroEsc === f ? 'ativo' : ''}" data-f="${f}">${f}</button>`).join('');
   $('#filtro-esc').querySelectorAll('button').forEach(b => b.onclick = () => { E.filtroEsc = b.dataset.f; telaClientes(); });
   desenharClientes();
 }
+$('#c-ref').onchange = () => telaClientes();
 $('#busca').oninput = () => desenharClientes();
 function desenharClientes() {
   const termo = $('#busca').value.trim().toLowerCase();
@@ -453,8 +465,8 @@ function desenharClientes() {
   $('#t-clientes').querySelectorAll('tr.clic').forEach(tr => tr.onclick = () => abrirExtrato(+tr.dataset.id));
 }
 $('#gerar-mes').onclick = async () => {
-  const mes = mesISO();
-  if (!confirm('Lançar o honorário de ' + mesBR(mes + '-01') + ' para todos os clientes ativos? Quem já tem o mês lançado não é lançado de novo.')) return;
+  const mes = $('#c-ref').value || mesAnterior();
+  if (!confirm('Lançar o honorário de ' + mesBR(mes + '-01') + ' (vence em ' + nomeMes(mesSeguinte(mes)) + ') para todos os clientes ativos? Quem já tem esse mês lançado não é lançado de novo.')) return;
   const { data, error } = await sb.rpc('gerar_honorarios', { p_competencia: mes + '-01' });
   if (error) return toast('Falhou: ' + error.message);
   toast(data ? data + ' honorários lançados.' : 'O mês já estava lançado para todos.');
@@ -541,7 +553,7 @@ $('#x-pend').onclick = () => { const id = E.clienteAberto.id; fecharDialogos(); 
 $('#x-extra').onclick = () => {
   $('#form-extra').classList.toggle('oculto');
   $('#e-servico').innerHTML = '<option value="">—</option>' + E.extras.map(s => `<option value="${s.id}">${esc(s.nome)}${s.preco ? ' · ' + brl(s.preco) : ''}</option>`).join('');
-  $('#e-data').value = hojeISO(); $('#e-valor').value = ''; $('#e-desc').value = ''; $('#e-tipo').value = 'extra'; dicaExtra();
+  $('#e-data').value = hojeISO(); $('#e-comp').value = mesAnterior(); $('#e-valor').value = ''; $('#e-desc').value = ''; $('#e-tipo').value = 'extra'; dicaExtra();
 };
 function dicaExtra() {
   const t = $('#e-tipo').value;
@@ -559,6 +571,7 @@ $('#form-extra').onsubmit = async ev => {
   if (!isFinite(valor) || valor === 0 || (tipo !== 'ajuste' && valor < 0)) return toast('Valor inválido.');
   const { error } = await sb.from('lancamentos').insert({
     cliente_id: E.clienteAberto.id, tipo, valor, data: $('#e-data').value, descricao: $('#e-desc').value.trim(),
+    competencia: $('#e-comp').value ? $('#e-comp').value + '-01' : null,
     servico_extra_id: tipo === 'extra' && $('#e-servico').value ? +$('#e-servico').value : null,
   });
   if (error) return toast('Falhou: ' + error.message);
@@ -573,15 +586,15 @@ function escolherTipoRec(t) {
   $('#r-tipo').querySelectorAll('button').forEach(b => b.classList.toggle('sec', b.dataset.tipo !== t));
   const adi = t === 'adiantamento';
   $('#r-tipo-dica').textContent = adi
-    ? 'O cliente pagou antes do vencimento. Fica como crédito e abate o honorário do mês de referência quando ele for lançado.'
+    ? 'O cliente pagou antes do vencimento (ex.: em outubro, o honorário de outubro, que só vence em novembro). Fica como crédito e abate quando o honorário for lançado.'
     : '';
-  $('#r-comp').value = adi ? proximoMes() : mesISO();
+  $('#r-comp').value = adi ? mesISO() : mesAnterior();
   $('#r-botao').textContent = adi ? 'Lançar adiantamento' : 'Lançar recebimento';
 }
 $('#r-tipo').querySelectorAll('button').forEach(b => b.onclick = () => escolherTipoRec(b.dataset.tipo));
 function telaRecebimentos() {
   if (!$('#r-data').value) $('#r-data').value = hojeISO();
-  if (!$('#r-comp').value) $('#r-comp').value = mesISO();
+  if (!$('#r-comp').value) $('#r-comp').value = tipoRec === 'adiantamento' ? mesISO() : mesAnterior();
   if (!$('#rec-mes').value) $('#rec-mes').value = mesISO();
   mostrarSaldoRec(); listarRecebimentos(); listarCreditos();
 }
