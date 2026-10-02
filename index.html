@@ -85,6 +85,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--texto);color:#fff;padding:12px 18px;border-radius:8px;font-size:14px;z-index:99;max-width:calc(100vw - 32px)}
 .oculto{display:none!important}
 @media (max-width:760px){
+  nav button{font-size:13px}
   .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
   .col-opc{display:none}
   th,td{padding:10px 10px}
@@ -123,6 +124,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
       <button data-aba="clientes" class="ativo">Clientes</button>
       <button data-aba="recebimentos">Recebimentos</button>
       <button data-aba="pendencias">Pendências</button>
+      <button data-aba="servicos">Serviços</button>
     </nav>
     <button class="sair" id="sair">Sair</button>
   </header>
@@ -155,6 +157,11 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
       <div class="topo"><div><h1>Recebimentos</h1><div class="sub">Lance o que entrou. Pagamento a mais vira crédito do cliente.</div></div></div>
       <div class="grade2" style="margin-top:16px;align-items:start" id="rec-grade">
         <form class="cartao form" id="form-rec">
+          <div class="pilulas" id="r-tipo" role="group" aria-label="Tipo de recebimento">
+            <button type="button" data-tipo="recebimento" class="ativo">Pagamento</button>
+            <button type="button" data-tipo="adiantamento">Adiantamento</button>
+          </div>
+          <div class="sub" id="r-tipo-dica"></div>
           <label>Cliente <select id="r-cliente" required></select></label>
           <div class="sub" id="r-saldo"></div>
           <label>Valor recebido <input id="r-valor" inputmode="decimal" required placeholder="0,00" class="mono" style="font-size:20px"></label>
@@ -172,6 +179,12 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
           <tbody id="t-rec"></tbody></table>
         </div>
       </div>
+      <div class="cartao" style="margin-top:16px">
+        <div class="barra"><strong id="cred-tit">Adiantamentos e créditos em aberto</strong>
+          <span class="sub">Abatem sozinhos quando o honorário do mês é lançado.</span></div>
+        <table><thead><tr><th>Cliente</th><th class="col-opc">Último pagamento</th><th class="dir">Crédito</th></tr></thead>
+        <tbody id="t-cred"></tbody></table>
+      </div>
     </div>
 
     <!-- ---------------- PENDENCIAS ---------------- -->
@@ -187,6 +200,19 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
         </div>
         <div class="lista-p" id="l-pend"></div>
       </div>
+    </div>
+    <!-- ---------------- SERVICOS ---------------- -->
+    <div id="aba-servicos" class="oculto">
+      <div class="topo"><div><h1>Serviços</h1><div class="sub">Tabela de preços dos serviços extras. Edite direto no campo: grava ao sair dele.</div></div></div>
+      <div class="cartao" style="margin-top:16px">
+        <form class="barra" id="form-serv" style="gap:8px">
+          <input id="s-nome" placeholder="Novo serviço" style="flex:1;min-width:200px">
+          <input id="s-preco" placeholder="Preço" inputmode="decimal" class="mono" style="max-width:150px">
+          <button class="btn" type="submit">Incluir</button>
+        </form>
+        <table><thead><tr><th>Serviço</th><th>Preço</th><th></th></tr></thead><tbody id="t-serv"></tbody></table>
+      </div>
+      <div class="sub" style="margin-top:8px">Mudar o preço não altera o que já foi lançado nos clientes, só os próximos lançamentos.</div>
     </div>
   </main>
 </section>
@@ -340,13 +366,14 @@ async function carregarClientes() {
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => irPara(b.dataset.aba));
 document.querySelectorAll('[data-ir]').forEach(b => b.onclick = () => irPara(b.dataset.ir));
 function irPara(aba) {
-  if (!['clientes', 'recebimentos', 'pendencias'].includes(aba)) aba = 'clientes';
+  if (!['clientes', 'recebimentos', 'pendencias', 'servicos'].includes(aba)) aba = 'clientes';
   history.replaceState(null, '', '#' + aba);
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('ativo', b.dataset.aba === aba));
-  ['clientes', 'recebimentos', 'pendencias'].forEach(a => $('#aba-' + a).classList.toggle('oculto', a !== aba));
+  ['clientes', 'recebimentos', 'pendencias', 'servicos'].forEach(a => $('#aba-' + a).classList.toggle('oculto', a !== aba));
   if (aba === 'clientes') telaClientes();
   if (aba === 'recebimentos') telaRecebimentos();
   if (aba === 'pendencias') telaPendencias();
+  if (aba === 'servicos') telaServicos();
 }
 
 /* ============================ CLIENTES ============================ */
@@ -376,7 +403,7 @@ async function telaClientes() {
     ['Recebido no mês', brl(recebido), (rec || []).length + ' lançamentos'],
     ['Pendências abertas', String(abertas ?? 0), 'abertas, em andamento ou aguardando'],
   ].map(([r, v, s]) => `<div class="kpi"><div class="r">${r}</div><div class="v">${v}</div><div class="r">${s}</div></div>`).join('');
-  $('#filtro-esc').innerHTML = ['Todos', 'CS', 'MS', 'Devendo'].map(f => `<button class="${E.filtroEsc === f ? 'ativo' : ''}" data-f="${f}">${f}</button>`).join('');
+  $('#filtro-esc').innerHTML = ['Todos', 'CS', 'MS', 'Devendo', 'Com crédito'].map(f => `<button class="${E.filtroEsc === f ? 'ativo' : ''}" data-f="${f}">${f}</button>`).join('');
   $('#filtro-esc').querySelectorAll('button').forEach(b => b.onclick = () => { E.filtroEsc = b.dataset.f; telaClientes(); });
   desenharClientes();
 }
@@ -384,7 +411,7 @@ $('#busca').oninput = () => desenharClientes();
 function desenharClientes() {
   const termo = $('#busca').value.trim().toLowerCase();
   const l = E.clientes.filter(c => c.ativo)
-    .filter(c => E.filtroEsc === 'Todos' || (E.filtroEsc === 'Devendo' ? Number(c.saldo) > 0 : c.escritorio === E.filtroEsc))
+    .filter(c => E.filtroEsc === 'Todos' || (E.filtroEsc === 'Devendo' ? Number(c.saldo) > 0 : E.filtroEsc === 'Com crédito' ? Number(c.saldo) < 0 : c.escritorio === E.filtroEsc))
     .filter(c => !termo || c.nome.toLowerCase().includes(termo));
   $('#t-clientes').innerHTML = l.length ? l.map(c => {
     const [s, cls] = situacao(c);
@@ -407,7 +434,7 @@ $('#gerar-mes').onclick = async () => {
 };
 
 /* ---------------- extrato ---------------- */
-const NOMES_TIPO = { honorario: 'Honorário', decimo_terceiro: '13º honorário', extra: 'Extra', reembolso: 'Reembolso', recebimento: 'Recebimento', ajuste: 'Ajuste' };
+const NOMES_TIPO = { honorario: 'Honorário', decimo_terceiro: '13º honorário', extra: 'Extra', reembolso: 'Reembolso', recebimento: 'Recebimento', adiantamento: 'Adiantamento', ajuste: 'Ajuste' };
 async function abrirExtrato(id) {
   const c = E.clientes.find(x => x.id === id); if (!c) return;
   E.clienteAberto = c;
@@ -419,11 +446,11 @@ async function abrirExtrato(id) {
   if (!$('#dlg-extrato').open) $('#dlg-extrato').showModal();
   const { data } = await sb.from('lancamentos').select('id,data,tipo,valor,descricao,forma_pagamento').eq('cliente_id', id).order('data', { ascending: false }).order('id', { ascending: false }).limit(60);
   $('#x-linhas').innerHTML = (data || []).length ? data.map(l => {
-    const credito = l.tipo === 'recebimento' || (l.tipo === 'ajuste' && l.valor < 0);
+    const credito = l.tipo === 'recebimento' || l.tipo === 'adiantamento' || (l.tipo === 'ajuste' && l.valor < 0);
     return `<tr><td style="width:90px">${dataBR(l.data).slice(0, 5)}</td>
       <td>${esc(l.descricao || NOMES_TIPO[l.tipo])}${l.forma_pagamento ? ' <span class="sub">· ' + l.forma_pagamento + '</span>' : ''}</td>
       <td class="dir mono" style="color:${credito ? 'var(--ok)' : 'inherit'}">${credito ? '− ' : '+ '}${brl(Math.abs(l.valor)).replace('R$ ', '')}</td>
-      <td style="width:44px"><button class="fechar" title="Apagar lançamento" aria-label="Apagar lançamento" data-apagar="${l.id}">🗑</button></td></tr>`;
+      <td style="width:44px"><button class="fechar" title="Apagar lançamento" aria-label="Apagar lançamento" data-apagar="${l.id}">✕</button></td></tr>`;
   }).join('') : '<tr><td class="vazio">Nenhum lançamento ainda.</td></tr>';
   $('#x-linhas').querySelectorAll('[data-apagar]').forEach(b => b.onclick = () => apagarLancamento(+b.dataset.apagar));
 }
@@ -463,20 +490,44 @@ $('#form-extra').onsubmit = async ev => {
 };
 
 /* ============================ RECEBIMENTOS ============================ */
+let tipoRec = 'recebimento';
+function proximoMes() { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+function escolherTipoRec(t) {
+  tipoRec = t;
+  $('#r-tipo').querySelectorAll('button').forEach(b => b.classList.toggle('ativo', b.dataset.tipo === t));
+  const adi = t === 'adiantamento';
+  $('#r-tipo-dica').textContent = adi
+    ? 'O cliente pagou antes do vencimento. Fica como crédito e abate o honorário do mês de referência quando ele for lançado.'
+    : '';
+  $('#r-comp').value = adi ? proximoMes() : mesISO();
+  $('#r-botao').textContent = adi ? 'Lançar adiantamento' : 'Lançar recebimento';
+}
+$('#r-tipo').querySelectorAll('button').forEach(b => b.onclick = () => escolherTipoRec(b.dataset.tipo));
 function telaRecebimentos() {
   if (!$('#r-data').value) $('#r-data').value = hojeISO();
   if (!$('#r-comp').value) $('#r-comp').value = mesISO();
   if (!$('#rec-mes').value) $('#rec-mes').value = mesISO();
-  mostrarSaldoRec(); listarRecebimentos();
+  mostrarSaldoRec(); listarRecebimentos(); listarCreditos();
 }
 function mostrarSaldoRec() {
   const c = E.clientes.find(x => x.id === +$('#r-cliente').value);
   if (!c) { $('#r-saldo').textContent = ''; return; }
   $('#r-saldo').innerHTML = Number(c.saldo) > 0 ? `Saldo devedor <strong class="mono">${brl(c.saldo)}</strong>` : Number(c.saldo) < 0 ? `Cliente tem crédito de <strong class="mono">${brl(-c.saldo)}</strong>` : 'Em dia.';
-  if (Number(c.saldo) > 0 && !$('#r-valor').value) $('#r-valor').value = Number(c.saldo).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  if (!$('#r-valor').value) {
+    // Pagamento sugere o que deve; adiantamento sugere um honorário.
+    const sugestao = tipoRec === 'adiantamento' ? Number(c.honorario) : Number(c.saldo);
+    if (sugestao > 0) $('#r-valor').value = sugestao.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  }
   if (c.forma_pagamento && c.forma_pagamento !== 'Os dois') $('#r-forma').value = c.forma_pagamento;
 }
-$('#r-cliente').onchange = () => { $('#r-valor').value = ''; mostrarSaldoRec(); };
+$('#r-cliente').onchange = () => {
+  $('#r-valor').value = '';
+  const c = E.clientes.find(x => x.id === +$('#r-cliente').value);
+  // Cliente em dia pagando: o mais provável é que esteja adiantando o próximo mês.
+  if (c && Number(c.saldo) <= 0 && Number(c.honorario) > 0 && tipoRec === 'recebimento') escolherTipoRec('adiantamento');
+  else if (c && Number(c.saldo) > 0 && tipoRec === 'adiantamento') escolherTipoRec('recebimento');
+  mostrarSaldoRec();
+};
 $('#rec-mes').onchange = listarRecebimentos;
 $('#form-rec').onsubmit = async ev => {
   ev.preventDefault();
@@ -485,17 +536,19 @@ $('#form-rec').onsubmit = async ev => {
   if (!isFinite(valor) || valor <= 0) return toast('Valor inválido.');
   const c = E.clientes.find(x => x.id === id);
   const comp = $('#r-comp').value ? $('#r-comp').value + '-01' : null;
+  const rotulo = tipoRec === 'adiantamento' ? 'Adiantamento' : 'Recebimento';
   $('#r-botao').disabled = true;
   const { error } = await sb.from('lancamentos').insert({
-    cliente_id: id, tipo: 'recebimento', valor, data: $('#r-data').value, competencia: comp,
+    cliente_id: id, tipo: tipoRec, valor, data: $('#r-data').value, competencia: comp,
     forma_pagamento: $('#r-forma').value,
-    descricao: 'Recebimento' + (comp ? ' ' + comp.slice(5, 7) + '/' + comp.slice(0, 4) : '') + ($('#r-obs').value.trim() ? ' — ' + $('#r-obs').value.trim() : ''),
+    descricao: rotulo + (comp ? ' ref. ' + comp.slice(5, 7) + '/' + comp.slice(0, 4) : '') + ($('#r-obs').value.trim() ? ' — ' + $('#r-obs').value.trim() : ''),
   });
   $('#r-botao').disabled = false;
   if (error) return toast('Falhou: ' + error.message);
-  toast(`${brl(valor)} de ${c.nome} lançado.`);
+  toast(`${rotulo} de ${brl(valor)} de ${c.nome} lançado.`);
   $('#r-valor').value = ''; $('#r-obs').value = ''; $('#r-cliente').value = '';
-  await carregarClientes(); mostrarSaldoRec(); listarRecebimentos();
+  escolherTipoRec('recebimento');
+  await carregarClientes(); mostrarSaldoRec(); listarRecebimentos(); listarCreditos();
 };
 async function listarRecebimentos() {
   const mes = $('#rec-mes').value || mesISO();
@@ -504,18 +557,75 @@ async function listarRecebimentos() {
   const { data } = await sb.from('recebimentos').select('*').gte('data', ini).lt('data', fimISO).order('data', { ascending: false }).order('id', { ascending: false });
   const l = data || [];
   const tot = e => l.filter(r => !e || r.escritorio === e).reduce((s, r) => s + Number(r.valor), 0);
-  $('#rec-tit').innerHTML = `Recebidos · ${brl(tot())} <span class="sub">(CS ${brl(tot('CS'))} · MS ${brl(tot('MS'))})</span>`;
-  $('#t-rec').innerHTML = l.length ? l.map(r => `<tr><td>${dataBR(r.data).slice(0, 5)}</td><td>${esc(r.cliente)} <span class="tag ${r.escritorio === 'CS' ? 't-cs' : 't-ms'}">${r.escritorio || ''}</span></td>
+  const adi = l.filter(r => r.tipo === 'adiantamento').reduce((s, r) => s + Number(r.valor), 0);
+  $('#rec-tit').innerHTML = `Recebidos · ${brl(tot())} <span class="sub">(CS ${brl(tot('CS'))} · MS ${brl(tot('MS'))}${adi ? ' · adiantamentos ' + brl(adi) : ''})</span>`;
+  $('#t-rec').innerHTML = l.length ? l.map(r => `<tr><td>${dataBR(r.data).slice(0, 5)}</td><td>${esc(r.cliente)} <span class="tag ${r.escritorio === 'CS' ? 't-cs' : 't-ms'}">${r.escritorio || ''}</span>${r.tipo === 'adiantamento' ? ` <span class="tag t-aviso">Adiantamento ${r.competencia ? r.competencia.slice(5, 7) + '/' + r.competencia.slice(2, 4) : ''}</span>` : ''}</td>
     <td class="col-opc">${esc(r.forma_pagamento || '')}</td><td class="dir mono">${brl(r.valor)}</td>
-    <td style="width:44px"><button class="fechar" aria-label="Apagar recebimento" title="Apagar" data-apagar="${r.id}">🗑</button></td></tr>`).join('')
+    <td style="width:44px"><button class="fechar" aria-label="Apagar recebimento" title="Apagar" data-apagar="${r.id}">✕</button></td></tr>`).join('')
     : '<tr><td colspan="5" class="vazio">Nenhum recebimento neste mês.</td></tr>';
   $('#t-rec').querySelectorAll('[data-apagar]').forEach(b => b.onclick = async () => {
-    if (!confirm('Apagar este recebimento? O cliente volta a dever esse valor.')) return;
+    if (!confirm('Apagar este lançamento? O cliente volta a dever esse valor.')) return;
     const { error } = await sb.from('lancamentos').delete().eq('id', +b.dataset.apagar);
     if (error) return toast('Falhou: ' + error.message);
-    await carregarClientes(); listarRecebimentos();
+    await carregarClientes(); listarRecebimentos(); listarCreditos();
   });
 }
+function listarCreditos() {
+  const l = E.clientes.filter(c => Number(c.saldo) < 0).sort((a, b) => a.saldo - b.saldo);
+  const total = l.reduce((s, c) => s - Number(c.saldo), 0);
+  $('#cred-tit').innerHTML = `Adiantamentos e créditos em aberto${total ? ' · ' + brl(total) : ''}`;
+  $('#t-cred').innerHTML = l.length ? l.map(c => `<tr class="clic" data-id="${c.id}"><td>${esc(c.nome)} <span class="tag ${c.escritorio === 'CS' ? 't-cs' : 't-ms'}">${c.escritorio || ''}</span></td>
+    <td class="col-opc">${c.ultimo_recebimento ? dataBR(c.ultimo_recebimento) : '—'}</td><td class="dir mono" style="color:var(--ok);font-weight:600">${brl(-c.saldo)}</td></tr>`).join('')
+    : '<tr><td colspan="3" class="vazio">Nenhum cliente com crédito.</td></tr>';
+  $('#t-cred').querySelectorAll('tr.clic').forEach(tr => tr.onclick = () => abrirExtrato(+tr.dataset.id));
+}
+
+/* ============================ SERVICOS (tabela de precos) ============================ */
+async function telaServicos() {
+  const { data, error } = await sb.from('servicos_extras').select('id,nome,preco,ativo').order('ativo', { ascending: false }).order('nome');
+  if (error) return toast('Não consegui carregar os serviços: ' + error.message);
+  $('#t-serv').innerHTML = (data || []).map(s => `<tr data-id="${s.id}" style="${s.ativo ? '' : 'opacity:.55'}">
+      <td><input data-campo="nome" value="${esc(s.nome)}" aria-label="Nome do serviço"></td>
+      <td style="width:170px"><input data-campo="preco" class="mono" inputmode="decimal" aria-label="Preço"
+        value="${s.preco == null ? '' : Number(s.preco).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}" placeholder="sem preço"></td>
+      <td style="width:150px" class="dir"><button class="btn sec" style="min-height:40px;padding:0 12px" data-ativo="${s.ativo ? 0 : 1}">${s.ativo ? 'Desativar' : 'Reativar'}</button></td></tr>`).join('')
+    || '<tr><td colspan="3" class="vazio">Nenhum serviço cadastrado.</td></tr>';
+  // Grava ao sair do campo: tabela de preço é editada uma linha por vez.
+  $('#t-serv').querySelectorAll('input').forEach(inp => inp.onchange = async () => {
+    const id = +inp.closest('tr').dataset.id, campo = inp.dataset.campo;
+    let valor = inp.value.trim();
+    if (campo === 'preco') {
+      if (valor === '') valor = null;
+      else { valor = numero(valor); if (!isFinite(valor) || valor < 0) return toast('Preço inválido.'); }
+    } else if (!valor) return toast('O nome não pode ficar vazio.');
+    const { error } = await sb.from('servicos_extras').update({ [campo]: valor }).eq('id', id);
+    if (error) return toast('Falhou: ' + error.message);
+    toast('Salvo.');
+    if (campo === 'preco' && valor != null) inp.value = valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+    recarregarExtras();
+  });
+  $('#t-serv').querySelectorAll('[data-ativo]').forEach(b => b.onclick = async () => {
+    const id = +b.closest('tr').dataset.id;
+    const { error } = await sb.from('servicos_extras').update({ ativo: b.dataset.ativo === '1' }).eq('id', id);
+    if (error) return toast('Falhou: ' + error.message);
+    recarregarExtras(); telaServicos();
+  });
+}
+async function recarregarExtras() {
+  const { data } = await sb.from('servicos_extras').select('id,nome,preco').eq('ativo', true).order('nome');
+  E.extras = data || [];
+}
+$('#form-serv').onsubmit = async ev => {
+  ev.preventDefault();
+  const nome = $('#s-nome').value.trim(), precoTxt = $('#s-preco').value.trim();
+  const preco = precoTxt === '' ? null : numero(precoTxt);
+  if (!nome) return toast('Informe o nome do serviço.');
+  if (preco !== null && (!isFinite(preco) || preco < 0)) return toast('Preço inválido.');
+  const { error } = await sb.from('servicos_extras').insert({ nome, preco });
+  if (error) return toast(/duplicate|unique/i.test(error.message) ? 'Já existe um serviço com esse nome.' : 'Falhou: ' + error.message);
+  $('#s-nome').value = ''; $('#s-preco').value = '';
+  toast('Serviço incluído.'); recarregarExtras(); telaServicos();
+};
 
 /* ============================ PENDENCIAS ============================ */
 const STATUS = { aberta: ['Aberta', 't-info'], em_andamento: ['Em andamento', 't-aviso'], aguardando_cliente: ['Aguardando cliente', 't-cinza'], concluida: ['Concluída', 't-ok'], cancelada: ['Cancelada', 't-cinza'] };
