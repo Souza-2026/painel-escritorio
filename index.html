@@ -183,7 +183,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
           <input id="busca" placeholder="Buscar cliente" style="max-width:260px">
         </div>
         <table>
-          <thead><tr><th>Cliente</th><th>Escr.</th><th class="dir col-opc">Honorário</th><th class="cen col-opc">Vence</th><th class="dir">Saldo</th><th class="dir">Situação</th></tr></thead>
+          <thead><tr><th>Cliente</th><th>Escr.</th><th class="dir col-opc">Honorário</th><th class="cen col-opc">Vence</th><th class="dir">Saldo</th><th>Em aberto por mês</th><th class="dir">Situação</th></tr></thead>
           <tbody id="t-clientes"></tbody>
         </table>
       </div>
@@ -427,6 +427,8 @@ const mesISO = () => hojeISO().slice(0, 7);
 // Regra do escritório: o que se recebe neste mês é o honorário do mês ANTERIOR.
 const mesAnterior = (m = mesISO()) => { const d = new Date(+m.slice(0, 4), +m.slice(5, 7) - 2, 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
 const mesSeguinte = (m = mesISO()) => { const d = new Date(+m.slice(0, 4), +m.slice(5, 7), 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+// "set/26": o mês de referência de cada item, curto o bastante para caber na linha.
+const mesCurto = iso => iso ? ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][+iso.slice(5, 7) - 1] + '/' + iso.slice(2, 4) : 'sem mês';
 const nomeMes = m => mesBR(m + '-01').replace(/ de \d{4}$/, '');
 const dataBR = iso => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '';
 const mesBR = iso => { const n = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro']; return n[+iso.slice(5, 7) - 1] + ' de ' + iso.slice(0, 4); };
@@ -558,6 +560,7 @@ async function telaClientes() {
     sb.from('resumo_competencia').select('*').eq('competencia', ref + '-01'),
     sb.from('pendencias').select('id', { count: 'exact', head: true }).in('status', ['aberta', 'em_andamento', 'aguardando_cliente']),
   ]);
+  await carregarPorMes();
   const soma = (campo, e) => (q || []).filter(r => !e || r.escritorio === e).reduce((t, r) => t + Number(r[campo] || 0), 0);
   const linha = campo => `CS ${brl(soma(campo, 'CS'))} · MS ${brl(soma(campo, 'MS'))}`;
   const aRec = soma('a_receber'), rec = soma('recebido'), falta = Math.max(0, aRec - rec);
@@ -575,6 +578,28 @@ async function telaClientes() {
   desenharClientes();
 }
 $('#c-ref').onchange = () => telaClientes();
+// Saldo de cada cliente quebrado por mês de referência. O "Saldo" soma tudo; o
+// quadro de cima é só do mês escolhido — sem esta quebra, os dois não batem e
+// não dá para ver por quê (Gary, 05/10/2026).
+async function carregarPorMes() {
+  const { data } = await sb.from('lancamentos').select('cliente_id,tipo,valor,competencia');
+  const m = {};
+  (data || []).forEach(l => {
+    const v = (l.tipo === 'recebimento' || l.tipo === 'adiantamento') ? -Number(l.valor) : Number(l.valor);
+    const k = l.competencia ? l.competencia.slice(0, 7) : '';
+    ((m[l.cliente_id] ||= {})[k] = ((m[l.cliente_id] || {})[k] || 0) + v);
+  });
+  E.porMes = m;
+}
+function tagsPorMes(id) {
+  const meses = E.porMes?.[id] || {};
+  const ref = $('#c-ref').value;
+  const t = Object.keys(meses).sort().filter(k => Math.abs(meses[k]) >= 0.005).map(k => {
+    const v = meses[k], cls = v < 0 ? 't-ok' : k === ref ? 't-aviso' : k < ref ? 't-erro' : 't-info';
+    return `<span class="tag ${cls}" title="${v < 0 ? 'Crédito' : 'Falta'} referente a ${k ? mesBR(k + '-01') : 'lançamento sem mês'}">${mesCurto(k ? k + '-01' : '')} ${v < 0 ? 'crédito ' + brl(-v) : brl(v)}</span>`;
+  });
+  return t.length ? t.join(' ') : '<span class="sub">—</span>';
+}
 $('#busca').oninput = () => desenharClientes();
 function desenharClientes() {
   const termo = $('#busca').value.trim().toLowerCase();
@@ -588,8 +613,9 @@ function desenharClientes() {
       <td class="dir mono col-opc">${Number(c.honorario) ? brl(c.honorario) : '—'}</td>
       <td class="cen col-opc">${c.dia_pagamento ? String(c.dia_pagamento).padStart(2, '0') : '—'}</td>
       <td class="dir mono" style="font-weight:600">${brl(c.saldo)}</td>
+      <td style="white-space:normal;line-height:1.9">${tagsPorMes(c.id)}</td>
       <td class="dir"><span class="tag ${cls}">${s}</span></td></tr>`;
-  }).join('') : '<tr><td colspan="6" class="vazio">Nenhum cliente neste filtro.</td></tr>';
+  }).join('') : '<tr><td colspan="7" class="vazio">Nenhum cliente neste filtro.</td></tr>';
   $('#t-clientes').querySelectorAll('tr.clic').forEach(tr => tr.onclick = () => abrirExtrato(+tr.dataset.id));
 }
 $('#gerar-mes').onclick = async () => {
@@ -612,11 +638,11 @@ async function abrirExtrato(id) {
   $('#x-saldo').textContent = Number(c.saldo) < 0 ? 'Crédito ' + brl(-c.saldo) : 'Saldo ' + brl(c.saldo);
   $('#x-linhas').innerHTML = '<tr><td class="vazio">Carregando…</td></tr>';
   if (!$('#dlg-extrato').open) $('#dlg-extrato').showModal();
-  const { data } = await sb.from('lancamentos').select('id,data,tipo,valor,descricao,forma_pagamento').eq('cliente_id', id).order('data', { ascending: false }).order('id', { ascending: false }).limit(60);
+  const { data } = await sb.from('lancamentos').select('id,data,tipo,valor,descricao,forma_pagamento,competencia').eq('cliente_id', id).order('data', { ascending: false }).order('id', { ascending: false }).limit(60);
   $('#x-linhas').innerHTML = (data || []).length ? data.map(l => {
     const credito = l.tipo === 'recebimento' || l.tipo === 'adiantamento' || (l.tipo === 'ajuste' && l.valor < 0);
     return `<tr><td style="width:90px">${dataBR(l.data).slice(0, 5)}</td>
-      <td>${esc(l.descricao || NOMES_TIPO[l.tipo])}${l.forma_pagamento ? ' <span class="sub">· ' + l.forma_pagamento + '</span>' : ''}</td>
+      <td><span class="tag t-cinza" title="Mês de referência">${mesCurto(l.competencia)}</span> ${esc(l.descricao || NOMES_TIPO[l.tipo])}${l.forma_pagamento ? ' <span class="sub">· ' + l.forma_pagamento + '</span>' : ''}</td>
       <td class="dir mono" style="color:${credito ? 'var(--ok)' : 'inherit'}">${credito ? '− ' : '+ '}${brl(Math.abs(l.valor)).replace('R$ ', '')}</td>
       <td style="width:44px"><button class="fechar" title="Apagar lançamento" aria-label="Apagar lançamento" data-apagar="${l.id}">✕</button></td></tr>`;
   }).join('') : '<tr><td class="vazio">Nenhum lançamento ainda.</td></tr>';
@@ -776,7 +802,7 @@ async function listarRecebimentos() {
   const tot = e => l.filter(r => !e || r.escritorio === e).reduce((s, r) => s + Number(r.valor), 0);
   const adi = l.filter(r => r.tipo === 'adiantamento').reduce((s, r) => s + Number(r.valor), 0);
   $('#rec-tit').innerHTML = `Recebidos · ${brl(tot())} <span class="sub">(CS ${brl(tot('CS'))} · MS ${brl(tot('MS'))}${adi ? ' · adiantamentos ' + brl(adi) : ''})</span>`;
-  $('#t-rec').innerHTML = l.length ? l.map(r => `<tr><td>${dataBR(r.data).slice(0, 5)}</td><td>${esc(r.cliente)} <span class="tag ${r.escritorio === 'CS' ? 't-cs' : 't-ms'}">${r.escritorio || ''}</span>${r.tipo === 'adiantamento' ? ` <span class="tag t-aviso">Adiantamento ${r.competencia ? r.competencia.slice(5, 7) + '/' + r.competencia.slice(2, 4) : ''}</span>` : ''}</td>
+  $('#t-rec').innerHTML = l.length ? l.map(r => `<tr><td>${dataBR(r.data).slice(0, 5)}</td><td>${esc(r.cliente)} <span class="tag ${r.escritorio === 'CS' ? 't-cs' : 't-ms'}">${r.escritorio || ''}</span> <span class="tag ${r.tipo === 'adiantamento' ? 't-aviso' : 't-cinza'}" title="Mês de referência">${r.tipo === 'adiantamento' ? 'Adiantamento ' : 'ref. '}${mesCurto(r.competencia)}</span></td>
     <td class="col-opc">${esc(r.forma_pagamento || '')}</td><td class="dir mono">${brl(r.valor)}</td>
     <td style="width:44px"><button class="fechar" aria-label="Apagar recebimento" title="Apagar" data-apagar="${r.id}">✕</button></td></tr>`).join('')
     : '<tr><td colspan="5" class="vazio">Nenhum recebimento neste mês.</td></tr>';
