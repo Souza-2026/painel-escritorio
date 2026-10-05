@@ -867,10 +867,12 @@ function enviarWhats(d) {
 }
 async function baixarVia(d) {
   toast('Gerando a via assinada…');
-  const { data: doc, error } = await sb.rpc('documento_publico', { p_token: d.token });
+  // Direto da tabela e do bucket (acesso da equipe): o link público expira, a via do escritório não.
+  const { data: doc, error } = await sb.from('documentos').select('*').eq('token', d.token).single();
   if (error || !doc) return toast('Falhou: ' + (error ? error.message : 'documento não encontrado'));
-  const url = sb.storage.from('documentos').getPublicUrl(doc.arquivo_path).data.publicUrl;
-  const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+  const arq = await sb.storage.from('documentos').download(doc.arquivo_path);
+  if (arq.error) return toast('Falhou: ' + arq.error.message);
+  const bytes = new Uint8Array(await arq.data.arrayBuffer());
   const via = await gerarViaAssinada(bytes, doc, d.token);
   baixarArquivo(via, d.titulo.replace(/[\\/:*?"<>|]/g, '') + ' - assinado.pdf');
 }

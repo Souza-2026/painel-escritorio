@@ -68,7 +68,7 @@ const $ = s => document.querySelector(s);
 const token = new URLSearchParams(location.search).get('t') || '';
 let DOC = null, BYTES = null, HASH = '', rabiscou = false;
 
-function erro(m) { $('#msg').innerHTML = `<div class="erro">${m}</div>`; }
+function erro(m) { const d = document.createElement('div'); d.className = 'erro'; d.textContent = m; $('#msg').replaceChildren(d); }
 
 async function iniciar() {
   if (!token) { $('#titulo').textContent = 'Link inválido'; return erro('Peça um novo link ao escritório.'); }
@@ -78,8 +78,11 @@ async function iniciar() {
   $('#h-emissor').textContent = DOC.emissor;
   $('#titulo').textContent = DOC.titulo;
   $('#para').textContent = 'Para: ' + DOC.signatario_nome;
-  const url = sb.storage.from('documentos').getPublicUrl(DOC.arquivo_path).data.publicUrl;
-  BYTES = new Uint8Array(await (await fetch(url)).arrayBuffer());
+  // PDF pela Edge Function: o bucket é privado e ela confere o token e a validade.
+  const resp = await fetch('https://lnryjrhqkcvebwzbllwb.supabase.co/functions/v1/documento-pdf?t=' + encodeURIComponent(token),
+    { headers: { apikey: 'sb_publishable_r1Kda2TzysqXpXPklOjJFg_YEtbAkgG' } });
+  if (!resp.ok) { $('#titulo').textContent = 'Documento não encontrado'; return erro('O link pode ter expirado ou sido cancelado. Peça um novo link ao escritório.'); }
+  BYTES = new Uint8Array(await resp.arrayBuffer());
   HASH = await sha256Hex(BYTES);
   if (HASH !== DOC.arquivo_sha256) return erro('O arquivo não confere com o registrado. Avise o escritório.');
   const pdf = await pdfjsLib.getDocument({ data: BYTES.slice() }).promise;
@@ -152,8 +155,10 @@ $('#form').onsubmit = async ev => {
 
 function mostrarFeito() {
   $('#form').classList.add('oculto'); $('#feito').classList.remove('oculto');
-  $('#feito-txt').innerHTML = `<b>Documento assinado.</b><br>${DOC.assinado_nome} · ${dataHoraBelem(DOC.assinado_em)}` +
-    (DOC.assinado_opcao ? `<br>Opção: ${DOC.assinado_opcao}` : '');
+  // Nome e opção como TEXTO: o nome é digitado por quem assina e não pode virar HTML.
+  const txt = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  $('#feito-txt').innerHTML = `<b>Documento assinado.</b><br>${txt(DOC.assinado_nome)} · ${dataHoraBelem(DOC.assinado_em)}` +
+    (DOC.assinado_opcao ? `<br>Opção: ${txt(DOC.assinado_opcao)}` : '');
   $('#topo').after($('#feito'));
 }
 $('#baixar').onclick = async () => {
