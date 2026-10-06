@@ -17,6 +17,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.10/vfs_fonts.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="contrato-modelo.js"></script>
+<script src="contrato-sistema.js"></script>
 <!--
   Painel do Escritorio (CS + MS Contabil) -- clientes e saldos, recebimentos, pendencias.
   Banco: Supabase painel-escritorio (lnryjrhqkcvebwzbllwb). A chave abaixo e a PUBLICA:
@@ -272,7 +273,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
     <div id="aba-assinaturas" class="oculto">
       <div class="topo">
         <div><h1>Assinaturas</h1><div class="sub">Propostas e contratos que o cliente assina pelo celular, com o dedo.</div></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sec" id="novo-doc">+ Enviar PDF pronto</button><button class="btn" id="novo-contrato">+ Contrato de serviços contábeis</button></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sec" id="novo-doc">+ Enviar PDF pronto</button><button class="btn" id="novo-contrato">+ Contrato de serviços contábeis</button><button class="btn" id="novo-contrato-sis">+ Contrato do sistema Gestão e Controle</button></div>
       </div>
       <div class="cartao" style="margin-top:16px">
         <table><thead><tr><th>Documento</th><th class="col-opc">Para</th><th>Situação</th><th></th></tr></thead>
@@ -353,7 +354,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
 </dialog>
 
 <dialog id="dlg-contrato" style="width:min(760px,calc(100vw - 32px))">
-  <div class="dlg-cab"><h2>Contrato de serviços contábeis</h2><button class="fechar" aria-label="Fechar" data-fechar>×</button></div>
+  <div class="dlg-cab"><h2 id="c-titulo">Contrato de serviços contábeis</h2><button class="fechar" aria-label="Fechar" data-fechar>×</button></div>
   <form class="form" id="form-contrato">
     <label>Cliente do painel <select id="c-cli"></select></label>
     <div class="cartao" style="padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--fundo)">
@@ -369,9 +370,9 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
     <label>Razão social <input id="c-razao" required></label>
     <div class="grade2">
       <label>Nome fantasia <input id="c-fant"></label>
-      <label>Regime <select id="c-regime"><option>Simples Nacional</option><option>Lucro Presumido</option><option>Lucro Real</option><option>MEI</option></select></label>
+      <label class="so-cont">Regime <select id="c-regime"><option>Simples Nacional</option><option>Lucro Presumido</option><option>Lucro Real</option><option>MEI</option></select></label>
     </div>
-    <div class="grade2">
+    <div class="grade2 so-cont">
       <label>Natureza e porte <input id="c-nat"></label>
       <label>Atividade principal <input id="c-ativ"></label>
     </div>
@@ -382,15 +383,33 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
     </div>
     <label>WhatsApp do responsável <input id="c-whats" inputmode="tel" data-mascara="fone" placeholder="(91) 90000-0000"></label>
     <div class="grade2">
-      <label>Honorário mensal <input id="c-hon" inputmode="decimal" class="mono" required></label>
-      <label>Dia do vencimento <input id="c-dia" type="number" min="1" max="31" required></label>
+      <label><span id="c-hon-l">Honorário mensal</span> <input id="c-hon" inputmode="decimal" class="mono" required></label>
+      <label id="c-dia-l">Dia do vencimento <input id="c-dia" type="number" min="1" max="31"></label>
+    </div>
+    <div class="so-sis cartao" style="padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--fundo)">
+      <div class="grade2">
+        <label>Segmento <select id="c-seg"><option value="comercio">Comércio</option><option value="oficina">Oficina mecânica</option><option value="clinica">Clínica / consultório</option></select></label>
+        <label>Plano <select id="c-plano"><option value="mensal">Mensal</option><option value="anual">Anual (à vista)</option></select></label>
+      </div>
+      <div class="grade2">
+        <label id="c-anual-l">Valor anual <input id="c-anual" inputmode="decimal" class="mono" value="1.200,00"></label>
+        <label>Dispositivos inclusos <input id="c-maq" type="number" min="1" max="20" value="3"></label>
+      </div>
+      <div class="grade2">
+        <label>Acréscimo por dispositivo extra (%) <input id="c-pct" inputmode="decimal" value="20"></label>
+        <label>Tolerância antes de suspender (dias) <input id="c-tol" type="number" min="0" max="60" value="5"></label>
+      </div>
+      <div class="grade2">
+        <label class="ck"><input type="checkbox" id="c-impl"> Inclui implantação assistida</label>
+        <label id="c-impl-l">Valor da implantação <input id="c-impl-v" inputmode="decimal" class="mono" value="500,00"></label>
+      </div>
     </div>
     <div class="grade2">
       <label>Multa por atraso (%) <input id="c-multa" inputmode="decimal" value="2"></label>
       <label>Juros ao mês (%) <input id="c-juros" inputmode="decimal" value="1"></label>
     </div>
     <label>Foro <input id="c-foro" value="Belém/PA"></label>
-    <div style="display:flex;flex-direction:column;gap:6px">
+    <div class="so-cont" style="display:flex;flex-direction:column;gap:6px">
       <label class="ck"><input type="checkbox" id="c-dp" checked> Inclui departamento pessoal (folha, eSocial, FGTS)</label>
       <label class="ck"><input type="checkbox" id="c-st"> Empresa compra mercadoria com ICMS-ST / antecipação (comércio)</label>
       <label class="ck"><input type="checkbox" id="c-mei"> Está saindo do MEI para Microempresa</label>
@@ -1002,13 +1021,37 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
 function cStatus(t) { $('#c-status').textContent = t; }
 
-$('#novo-contrato').onclick = () => {
+// Um formulario, dois contratos: o contabil (CS) e o do sistema (G-Tech).
+let tipoContrato = 'contabil';
+function ajustarTipoContrato() {
+  const sis = tipoContrato === 'sistema';
+  $('#c-titulo').textContent = sis ? 'Contrato do sistema Gestão e Controle (G-Tech)' : 'Contrato de serviços contábeis';
+  document.querySelectorAll('#form-contrato .so-cont').forEach(e => e.classList.toggle('oculto', sis));
+  document.querySelectorAll('#form-contrato .so-sis').forEach(e => e.classList.toggle('oculto', !sis));
+  const anual = sis && $('#c-plano').value === 'anual';
+  $('#c-hon-l').textContent = sis ? 'Mensalidade' : 'Honorário mensal';
+  $('#c-hon').required = !anual; $('#c-hon').closest('label').classList.toggle('oculto', anual);
+  $('#c-dia-l').classList.toggle('oculto', anual);
+  $('#c-anual-l').classList.toggle('oculto', !anual);
+  $('#c-impl-l').classList.toggle('oculto', !$('#c-impl').checked);
+}
+$('#c-plano').onchange = ajustarTipoContrato;
+$('#c-impl').onchange = ajustarTipoContrato;
+$('#novo-contrato-sis').onclick = () => {
+  abrirFormContrato('sistema');
+  $('#c-hon').value = '100,00'; $('#c-dia').value = 10;
+  if (!gtechCompleta()) cStatus('ATENÇÃO: falta a razão social da G-Tech no modelo (contrato-sistema.js).');
+};
+$('#novo-contrato').onclick = () => abrirFormContrato('contabil');
+function abrirFormContrato(tipo) {
+  tipoContrato = tipo;
   $('#form-contrato').reset();
   $('#c-cli').innerHTML = '<option value="">— cliente novo —</option>' +
     E.clientes.filter(c => c.ativo).map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('');
   cStatus('Digite o CNPJ e clique em Buscar. Para o CPF do responsável, aponte a pasta com o contrato de constituição, a alteração ou a foto da CNH.');
+  ajustarTipoContrato();
   $('#dlg-contrato').showModal();
-};
+}
 $('#c-cli').onchange = async () => {
   const id = +$('#c-cli').value; if (!id) return;
   const { data: c } = await sb.from('clientes').select('*').eq('id', id).single();
@@ -1017,8 +1060,10 @@ $('#c-cli').onchange = async () => {
   v('#c-cnpj', c.cnpj ? mascaraCpf(c.cnpj) : ''); v('#c-razao', c.razao_social || c.nome); v('#c-nat', c.natureza);
   v('#c-ativ', c.atividade); v('#c-end', c.endereco); v('#c-regime', c.regime); v('#c-resp', c.responsavel);
   v('#c-cpf', c.responsavel_cpf ? mascaraCpf(c.responsavel_cpf) : ''); v('#c-whats', c.whatsapp ? mascaraFone(c.whatsapp) : '');
-  if (Number(c.honorario)) $('#c-hon').value = Number(c.honorario).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-  v('#c-dia', c.dia_pagamento);
+  if (tipoContrato === 'contabil') {
+    if (Number(c.honorario)) $('#c-hon').value = Number(c.honorario).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+    v('#c-dia', c.dia_pagamento);
+  }
   if (!c.razao_social && c.cnpj) buscarCnpj();
 };
 
@@ -1159,6 +1204,44 @@ function dadosContrato(eletronica) {
     eletronica,
   };
 }
+function dadosContratoSistema(eletronica) {
+  if (!gtechCompleta()) throw new Error('Falta a razão social da G-Tech no modelo do contrato.');
+  const anual = $('#c-plano').value === 'anual';
+  const mensal = numero($('#c-hon').value || '0'), valAnual = numero($('#c-anual').value || '0');
+  if (anual ? !(valAnual > 0) : !(mensal > 0)) throw new Error(anual ? 'Informe o valor anual.' : 'Informe a mensalidade.');
+  const dia = +$('#c-dia').value; if (!anual && !(dia >= 1 && dia <= 31)) throw new Error('Informe o dia do vencimento.');
+  if ($('#c-cnpj').value.replace(/\D/g, '').length !== 14) throw new Error('Informe o CNPJ.');
+  if (!$('#c-razao').value.trim() || !$('#c-resp').value.trim()) throw new Error('Razão social e responsável são obrigatórios.');
+  const impl = $('#c-impl').checked, valImpl = numero($('#c-impl-v').value || '0');
+  if (impl && !(valImpl > 0)) throw new Error('Informe o valor da implantação.');
+  const hoje = new Date(), endereco = $('#c-end').value.trim();
+  const cidade = (endereco.match(/([A-Za-zÀ-ú .]+)\/([A-Z]{2})/) || [])[0] || '';
+  // Plano anual: a base dos +X% por dispositivo e o anual / 12.
+  return {
+    razao: $('#c-razao').value.trim(), fantasia: $('#c-fant').value.trim(), cnpj: $('#c-cnpj').value.replace(/\D/g, ''),
+    endereco, cidade: cidade.trim(), responsavel: $('#c-resp').value.trim(), responsavelCpf: $('#c-cpf').value.replace(/\D/g, ''),
+    segmento: $('#c-seg').value, plano: anual ? 'anual' : 'mensal',
+    mensalidade: anual ? Math.round(valAnual / 12 * 100) / 100 : mensal, anual: valAnual, dia,
+    maquinas: Math.max(1, +$('#c-maq').value || 3), pctAdicional: numero($('#c-pct').value || '20'),
+    tolerancia: Math.max(0, +$('#c-tol').value || 0),
+    implantacao: impl, valorImplantacao: valImpl,
+    multa: ($('#c-multa').value || '2').replace('.', ','), juros: ($('#c-juros').value || '1').replace('.', ','),
+    foro: $('#c-foro').value.trim() || 'Belém/PA',
+    emissao: `${hoje.getDate()} de ${MESES[hoje.getMonth()]} de ${hoje.getFullYear()}`,
+    emissaoMes: `${MESES[hoje.getMonth()][0].toUpperCase() + MESES[hoje.getMonth()].slice(1)} de ${hoje.getFullYear()}`,
+    eletronica,
+  };
+}
+// Contrato do sistema: atualiza so a identificacao de quem ja e cliente do
+// escritorio. Honorario, regime e vencimento sao do contrato CONTABIL; e quem
+// so usa o sistema nao vira cliente da contabilidade no painel.
+async function salvarCadastroSistema(d) {
+  const id = +$('#c-cli').value; if (!id) return null;
+  const reg = { cnpj: d.cnpj, razao_social: d.razao, endereco: d.endereco || null, responsavel: d.responsavel,
+    responsavel_cpf: d.responsavelCpf || null };
+  if ($('#c-whats').value.replace(/\D/g, '')) reg.whatsapp = $('#c-whats').value;
+  return (await sb.from('clientes').update(reg).eq('id', id)).error ? null : id;
+}
 // O que foi digitado aqui atualiza o cadastro do cliente no painel.
 async function salvarCadastroDoContrato(d) {
   const reg = { cnpj: d.cnpj, razao_social: d.razao, natureza: d.natureza || null, atividade: d.atividade || null,
@@ -1170,14 +1253,22 @@ async function salvarCadastroDoContrato(d) {
   const r = await sb.from('clientes').insert({ nome: (d.fantasia || d.razao).toUpperCase(), escritorio: 'CS', ...reg }).select('id').single();
   return r.error ? null : r.data.id;
 }
-const nomeArquivo = d => 'Contrato de Servicos Contabeis - ' + (d.fantasia || d.razao).replace(/[\\/:*?"<>|]/g, '');
+const nomeArquivo = d => (tipoContrato === 'sistema' ? 'Contrato Gestao e Controle - ' : 'Contrato de Servicos Contabeis - ') +
+  (d.fantasia || d.razao).replace(/[\\/:*?"<>|]/g, '');
+// Os dois contratos passam pelos mesmos passos; muda o modelo e o que se grava.
+const CONTRATO = {
+  contabil: { dados: e => dadosContrato(e), bytes: d => gerarContratoBytes(d), salvar: d => salvarCadastroDoContrato(d),
+    titulo: d => 'Proposta e Contrato de Serviços Contábeis — ' + (d.fantasia || d.razao), emissor: 'CS Assessoria Contábil' },
+  sistema: { dados: e => dadosContratoSistema(e), bytes: d => gerarContratoSistemaBytes(d), salvar: d => salvarCadastroSistema(d),
+    titulo: d => 'Contrato de Licença de Uso — Gestão e Controle — ' + (d.fantasia || d.razao), emissor: 'G-Tech' },
+};
 $('#c-imprimir').onclick = async () => {
   try {
-    const d = dadosContrato(false);
+    const K = CONTRATO[tipoContrato], d = K.dados(false);
     cStatus('Gerando o PDF…');
-    const bytes = await gerarContratoBytes(d);
+    const bytes = await K.bytes(d);
     baixarArquivo(bytes, nomeArquivo(d) + '.pdf');
-    await salvarCadastroDoContrato(d); await carregarClientes();
+    await K.salvar(d); await carregarClientes();
     cStatus('PDF baixado. Imprima e colha as duas assinaturas.');
   } catch (e) { toast(e.message); }
 };
@@ -1185,12 +1276,12 @@ $('#form-contrato').onsubmit = async ev => {
   ev.preventDefault();
   $('#c-enviar').disabled = true; $('#c-enviar').textContent = 'Gerando…';
   try {
-    const d = dadosContrato(true);
-    const bytes = await gerarContratoBytes(d);
+    const K = CONTRATO[tipoContrato], d = K.dados(true);
+    const bytes = await K.bytes(d);
     const hash = await sha256Hex(bytes);
-    const clienteId = await salvarCadastroDoContrato(d);
+    const clienteId = await K.salvar(d);
     const ins = await sb.from('documentos').insert({
-      titulo: 'Proposta e Contrato de Serviços Contábeis — ' + (d.fantasia || d.razao), emissor: 'CS Assessoria Contábil',
+      titulo: K.titulo(d), emissor: K.emissor,
       cliente_id: clienteId, signatario_nome: d.responsavel, signatario_cpf: d.responsavelCpf || null,
       signatario_whatsapp: $('#c-whats').value.trim() || null, arquivo_sha256: hash,
     }).select('id,token,titulo,signatario_nome,signatario_whatsapp').single();
