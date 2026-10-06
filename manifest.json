@@ -1,0 +1,22 @@
+{
+  "name": "Painel do Escritório — CS · MS Contábil",
+  "short_name": "Painel CS",
+  "description": "Pendências dos clientes, ditadas ou compartilhadas do WhatsApp.",
+  "start_url": "./#pendencias",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F4F5F7",
+  "theme_color": "#1F3864",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "icone-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icone-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icone-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "share_target": {
+    "action": "./",
+    "method": "GET",
+    "params": { "title": "title", "text": "text", "url": "url" }
+  }
+}

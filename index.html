@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Painel do Escritório</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1F3864">
+<link rel="icon" href="icone-192.png">
+<link rel="apple-touch-icon" href="icone-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -104,7 +108,15 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
 .oculto{display:none!important}
 .ck{flex-direction:row!important;align-items:center;gap:10px;font-weight:500!important}
 .ck input{width:22px;height:22px;min-height:0;flex:none}
+.ditar{padding:16px;display:flex;flex-direction:column;gap:12px;border-color:var(--azul)}
+.ditar textarea{min-height:64px;font-size:16px}
+.ditar-campos{display:grid;grid-template-columns:2fr 1.3fr 1fr;gap:10px}
+.ditar-rodape{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.ditar .auto{background:var(--info-f)}
 @media (max-width:760px){
+  .ditar-campos{grid-template-columns:1fr 1fr}
+  .ditar-campos label:first-child{grid-column:1/-1}
+  .ditar-rodape .btn{width:100%}
   #app:not(.oculto){display:block}
   aside.lado{position:sticky;height:auto;z-index:20;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px 10px}
   aside.lado .marca small,.quem{display:none}
@@ -231,6 +243,21 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
         <div><h1 id="p-saud">Pendências</h1><div class="sub">O que os clientes pediram, quem está com cada uma e o prazo.</div></div>
         <button class="btn" id="nova-pend">+ Nova pendência</button>
       </div>
+      <!-- Ditar: a mesma frase que iria para o robo do WhatsApp. Tambem recebe o
+           texto do "Compartilhar" do WhatsApp (share_target do manifest). -->
+      <form class="cartao ditar" id="form-ditar" style="margin-top:16px">
+        <label>Ditar pendência
+          <textarea id="d-texto" rows="2" placeholder="clint quer férias da Olaild dia 10/10 cleusa"></textarea></label>
+        <div class="ditar-campos">
+          <label>Cliente <select id="d-cliente"></select></label>
+          <label>Quem resolve <select id="d-resp"></select></label>
+          <label>Prazo <input type="date" id="d-prazo"></label>
+        </div>
+        <div class="ditar-rodape">
+          <span class="sub" id="d-dica">Cliente no começo, quem resolve no fim. O microfone do teclado funciona aqui.</span>
+          <button class="btn" id="d-gravar" disabled>Gravar</button>
+        </div>
+      </form>
       <div class="kpis" id="kpis-pend" style="margin-top:16px"></div>
       <div class="cartao" style="margin-top:16px">
         <div class="barra">
@@ -495,15 +522,17 @@ async function entrar(sessao) {
   await carregarBase(sessao.user.id);
   $('#quem').textContent = E.eu ? 'Conectado: ' + E.eu.nome : '';
   irPara(location.hash.slice(1) || 'pendencias');
+  receberCompartilhado();
 }
 
 /* ============================ BASE ============================ */
 async function carregarBase(uid) {
-  const [eq, ex] = await Promise.all([
-    sb.from('equipe').select('id,nome,user_id').order('id'),
+  const [eq, ex, ap] = await Promise.all([
+    sb.from('equipe').select('id,nome,user_id,apelidos').order('id'),
     sb.from('servicos_extras').select('id,nome,preco').eq('ativo', true).order('nome'),
+    sb.from('clientes').select('id,nome,apelidos').eq('ativo', true),
   ]);
-  E.equipe = eq.data || []; E.extras = ex.data || [];
+  E.equipe = eq.data || []; E.extras = ex.data || []; E.apelidos = ap.data || [];
   E.eu = E.equipe.find(p => p.user_id === uid) || null;
   await carregarClientes();
 }
@@ -516,6 +545,10 @@ async function carregarClientes() {
   $('#p-cliente').innerHTML = '<option value="">Sem cliente (interno)</option>' + opcoes;
   const resp = E.equipe.map(p => `<option value="${p.id}">${esc(p.nome)}</option>`).join('');
   $('#p-resp').innerHTML = '<option value="">Sem responsável</option>' + resp;
+  const dc = $('#d-cliente').value, dr = $('#d-resp').value;
+  $('#d-cliente').innerHTML = '<option value="">Escolha o cliente</option>' + opcoes;
+  $('#d-resp').innerHTML = '<option value="">Sem responsável</option>' + resp;
+  $('#d-cliente').value = dc; $('#d-resp').value = dr;
   $('#filtro-resp').innerHTML = '<option value="">Todos os responsáveis</option>' + resp;
 }
 
@@ -1288,6 +1321,82 @@ $('#form-pend').onsubmit = async ev => {
   $('#dlg-pend').close(); toast('Pendência salva.');
   if (!$('#aba-pendencias').classList.contains('oculto')) listarPendencias(); else irPara('pendencias');
 };
+
+/* ============================ DITAR PENDENCIA ============================ */
+// A frase e lida pelo MESMO interpretador do robo do WhatsApp (interpretar.js,
+// gerado do .ts da Edge Function). O que ele acha vai para os campos, marcado
+// em azul; o que o Gary escolhe a mao nao e sobrescrito enquanto ele digita.
+const D = { manual: { cliente: false, resp: false, prazo: false }, descricao: '' };
+function lerDitado() {
+  const texto = $('#d-texto').value.trim();
+  $('#d-gravar').disabled = !texto;
+  if (!texto) {
+    D.manual = { cliente: false, resp: false, prazo: false };
+    ['#d-cliente', '#d-resp', '#d-prazo'].forEach(s => { $(s).value = ''; $(s).classList.remove('auto'); });
+    $('#d-dica').textContent = 'Cliente no começo, quem resolve no fim. O microfone do teclado funciona aqui.';
+    return;
+  }
+  if (!window.Interpretador) return;
+  const r = window.Interpretador.interpretar(texto, E.apelidos || [], E.equipe.map(m => ({ ...m, apelidos: m.apelidos || [] })), hojeISO());
+  D.descricao = r.descricao;
+  const por = (sel, chave, valor) => {
+    if (D.manual[chave]) return;
+    $(sel).value = valor ?? '';
+    $(sel).classList.toggle('auto', !!valor);
+  };
+  por('#d-cliente', 'cliente', r.cliente ? String(r.cliente.id) : '');
+  por('#d-resp', 'resp', r.responsavel ? String(r.responsavel.id) : '');
+  por('#d-prazo', 'prazo', r.prazo);
+  $('#d-dica').textContent = $('#d-cliente').value ? 'Vai gravar: ' + r.descricao : 'Não achei o cliente na frase — escolha na lista.';
+}
+let ditadoTimer;
+$('#d-texto').oninput = () => { clearTimeout(ditadoTimer); ditadoTimer = setTimeout(lerDitado, 150); };
+[['#d-cliente', 'cliente'], ['#d-resp', 'resp'], ['#d-prazo', 'prazo']].forEach(([s, k]) =>
+  $(s).addEventListener('change', () => { D.manual[k] = true; $(s).classList.remove('auto'); }));
+$('#form-ditar').onsubmit = async ev => {
+  ev.preventDefault();
+  const texto = $('#d-texto').value.trim();
+  if (!texto) return;
+  $('#d-gravar').disabled = true;
+  const { data, error } = await sb.from('pendencias').insert({
+    cliente_id: $('#d-cliente').value ? +$('#d-cliente').value : null,
+    descricao: D.descricao || texto,
+    responsavel_id: $('#d-resp').value ? +$('#d-resp').value : null,
+    prazo: $('#d-prazo').value || null,
+    origem: 'painel',
+    mensagem_original: texto,
+  }).select('id').single();
+  if (error) { $('#d-gravar').disabled = false; return toast('Falhou: ' + error.message); }
+  $('#d-texto').value = ''; lerDitado();
+  toast('Pendência ' + data.id + ' gravada.');
+  listarPendencias();
+};
+
+// "Compartilhar" do WhatsApp chega como ?text=... (share_target do manifest).
+// Guardado na sessao para sobreviver ao login, e tirado do endereco na hora:
+// recarregar a pagina nao pode trazer o mesmo texto de novo.
+(function guardarCompartilhado() {
+  const q = new URLSearchParams(location.search);
+  const t = [q.get('title'), q.get('text'), q.get('url')].filter(Boolean).join('\n').trim();
+  if (!t) return;
+  try { sessionStorage.setItem('compartilhado', t); } catch {}
+  history.replaceState(null, '', location.pathname + '#pendencias');
+})();
+function receberCompartilhado() {
+  let t = null;
+  try { t = sessionStorage.getItem('compartilhado'); sessionStorage.removeItem('compartilhado'); } catch {}
+  if (!t) return;
+  irPara('pendencias');
+  $('#d-texto').value = t; lerDitado();
+  $('#form-ditar').scrollIntoView({ block: 'start' });
+  toast('Mensagem recebida. Escolha o cliente e quem resolve.');
+}
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+<script type="module">
+import { interpretar } from './interpretar.js';
+window.Interpretador = { interpretar };
 </script>
 </body>
 </html>
