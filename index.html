@@ -113,6 +113,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
 .ditar-campos{display:grid;grid-template-columns:2fr 1.3fr 1fr;gap:10px}
 .ditar-rodape{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .ditar .auto{background:var(--info-f)}
+.busca-cli{min-height:38px;font-size:14px}
 @media (max-width:760px){
   .ditar-campos{grid-template-columns:1fr 1fr}
   .ditar-campos label:first-child{grid-column:1/-1}
@@ -192,7 +193,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
       <div class="cartao" style="margin-top:16px">
         <div class="barra">
           <div class="pilulas" id="filtro-esc"></div>
-          <input id="busca" placeholder="Buscar cliente" style="max-width:260px">
+          <input id="busca" placeholder="Buscar cliente (qualquer palavra)" style="max-width:260px">
         </div>
         <table>
           <thead><tr><th>Cliente</th><th>Escr.</th><th class="dir col-opc">Honorário</th><th class="cen col-opc">Vence</th><th class="dir">Saldo</th><th>Em aberto por mês</th><th class="dir">Situação</th></tr></thead>
@@ -212,7 +213,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
             <button type="button" class="btn sec" data-tipo="adiantamento">Adiantamento (antes do vencimento)</button>
           </div>
           <div class="sub" id="r-tipo-dica"></div>
-          <label>Cliente <select id="r-cliente" required></select></label>
+          <label>Cliente <input id="r-busca" class="busca-cli" placeholder="Buscar por palavra" autocomplete="off"><select id="r-cliente" required></select></label>
           <div class="sub" id="r-saldo"></div>
           <label>Valor recebido <input id="r-valor" inputmode="decimal" required placeholder="0,00" class="mono" style="font-size:20px"></label>
           <div class="grade2">
@@ -249,7 +250,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
         <label>Ditar pendência
           <textarea id="d-texto" rows="2" placeholder="clint quer férias da Olaild dia 10/10 cleusa"></textarea></label>
         <div class="ditar-campos">
-          <label>Cliente <select id="d-cliente"></select></label>
+          <label>Cliente <input id="d-busca" class="busca-cli" placeholder="Buscar por palavra" autocomplete="off"><select id="d-cliente"></select></label>
           <label>Quem resolve <select id="d-resp"></select></label>
           <label>Prazo <input type="date" id="d-prazo"></label>
         </div>
@@ -427,7 +428,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
 <dialog id="dlg-pend">
   <div class="dlg-cab"><h2 id="p-titulo">Nova pendência</h2><button class="fechar" aria-label="Fechar" data-fechar>×</button></div>
   <form class="form" id="form-pend">
-    <label>Cliente <select id="p-cliente"></select></label>
+    <label>Cliente <input id="p-busca" class="busca-cli" placeholder="Buscar por palavra" autocomplete="off"><select id="p-cliente"></select></label>
     <label>O que foi pedido <textarea id="p-desc" required></textarea></label>
     <div class="grade2">
       <label>Responsável <select id="p-resp"></select></label>
@@ -530,7 +531,7 @@ async function carregarBase(uid) {
   const [eq, ex, ap] = await Promise.all([
     sb.from('equipe').select('id,nome,user_id,apelidos').order('id'),
     sb.from('servicos_extras').select('id,nome,preco').eq('ativo', true).order('nome'),
-    sb.from('clientes').select('id,nome,apelidos').eq('ativo', true),
+    sb.from('clientes').select('id,nome,apelidos,razao_social,cnpj').eq('ativo', true),
   ]);
   E.equipe = eq.data || []; E.extras = ex.data || []; E.apelidos = ap.data || [];
   E.eu = E.equipe.find(p => p.user_id === uid) || null;
@@ -540,17 +541,42 @@ async function carregarClientes() {
   const { data, error } = await sb.from('saldo_clientes').select('*').order('nome');
   if (error) { toast('Não consegui carregar os clientes: ' + error.message); return; }
   E.clientes = data || [];
-  const opcoes = E.clientes.filter(c => c.ativo).map(c => `<option value="${c.id}">${esc(c.nome)} · ${c.escritorio || '—'}</option>`).join('');
-  $('#r-cliente').innerHTML = '<option value="">Escolha o cliente</option>' + opcoes;
-  $('#p-cliente').innerHTML = '<option value="">Sem cliente (interno)</option>' + opcoes;
+  montarListaCliente('r');
+  montarListaCliente('p');
   const resp = E.equipe.map(p => `<option value="${p.id}">${esc(p.nome)}</option>`).join('');
   $('#p-resp').innerHTML = '<option value="">Sem responsável</option>' + resp;
-  const dc = $('#d-cliente').value, dr = $('#d-resp').value;
-  $('#d-cliente').innerHTML = '<option value="">Escolha o cliente</option>' + opcoes;
+  const dr = $('#d-resp').value;
+  montarListaCliente('d');
   $('#d-resp').innerHTML = '<option value="">Sem responsável</option>' + resp;
-  $('#d-cliente').value = dc; $('#d-resp').value = dr;
+  $('#d-resp').value = dr;
   $('#filtro-resp').innerHTML = '<option value="">Todos os responsáveis</option>' + resp;
 }
+
+/* ============================ BUSCA DE CLIENTE ============================ */
+// Busca por PALAVRA, em qualquer ordem: "mente ct" acha a Comunidade
+// Terapeutica; "frios lira" acha a I J Lira. Procura no nome, nos apelidos
+// (os mesmos do ditado), na razao social e no CNPJ.
+const semAcento = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+function casaCliente(c, termo) {
+  const palavras = semAcento(termo).split(/\s+/).filter(Boolean);
+  if (!palavras.length) return true;
+  const ap = (E.apelidos || []).find(a => a.id === c.id);
+  const onde = semAcento([c.nome, ap && ap.razao_social, ap && ap.apelidos.join(' '), ap && ap.cnpj].join(' '));
+  return palavras.every(p => onde.includes(p));
+}
+const VAZIO_CLI = { r: 'Escolha o cliente', p: 'Sem cliente (interno)', d: 'Escolha o cliente' };
+function montarListaCliente(pref) {
+  const sel = $('#' + pref + '-cliente'), busca = $('#' + pref + '-busca'), atual = sel.value;
+  const l = E.clientes.filter(c => c.ativo && casaCliente(c, busca.value));
+  sel.innerHTML = `<option value="">${busca.value.trim() ? l.length + ' encontrado(s)' : VAZIO_CLI[pref]}</option>` +
+    l.map(c => `<option value="${c.id}">${esc(c.nome)} · ${c.escritorio || '—'}</option>`).join('');
+  if (l.some(c => String(c.id) === atual)) sel.value = atual;
+  // Sobrou um so: ja escolhe, sem mais um toque.
+  if (busca.value.trim() && l.length === 1 && sel.value !== String(l[0].id)) {
+    sel.value = String(l[0].id); sel.dispatchEvent(new Event('change'));
+  }
+}
+['r', 'p', 'd'].forEach(pref => { $('#' + pref + '-busca').oninput = () => montarListaCliente(pref); });
 
 /* ============================ ABAS ============================ */
 document.querySelectorAll('nav button[data-aba]').forEach(b => b.onclick = () => irPara(b.dataset.aba));
@@ -635,10 +661,10 @@ function tagsPorMes(id) {
 }
 $('#busca').oninput = () => desenharClientes();
 function desenharClientes() {
-  const termo = $('#busca').value.trim().toLowerCase();
+  const termo = $('#busca').value;
   const l = E.clientes.filter(c => c.ativo)
     .filter(c => E.filtroEsc === 'Todos' || (E.filtroEsc === 'Devendo' ? Number(c.saldo) > 0 : E.filtroEsc === 'Com crédito' ? Number(c.saldo) < 0 : c.escritorio === E.filtroEsc))
-    .filter(c => !termo || c.nome.toLowerCase().includes(termo));
+    .filter(c => casaCliente(c, termo));
   $('#t-clientes').innerHTML = l.length ? l.map(c => {
     const [s, cls] = situacao(c);
     return `<tr class="clic" data-id="${c.id}"><td style="font-weight:500">${esc(c.nome)}</td>
@@ -1296,6 +1322,7 @@ $('#nova-pend').onclick = () => abrirPendencia(null);
 function abrirPendencia(p, clienteId) {
   E.pendEditando = p;
   $('#p-titulo').textContent = p ? 'Editar pendência' : 'Nova pendência';
+  $('#p-busca').value = ''; montarListaCliente('p');
   $('#p-cliente').value = p ? (p.cliente_id || '') : (clienteId || '');
   $('#p-desc').value = p ? p.descricao : '';
   $('#p-resp').value = p ? (p.responsavel_id || '') : (E.eu ? E.eu.id : '');
@@ -1332,6 +1359,7 @@ function lerDitado() {
   $('#d-gravar').disabled = !texto;
   if (!texto) {
     D.manual = { cliente: false, resp: false, prazo: false };
+    $('#d-busca').value = ''; montarListaCliente('d');
     ['#d-cliente', '#d-resp', '#d-prazo'].forEach(s => { $(s).value = ''; $(s).classList.remove('auto'); });
     $('#d-dica').textContent = 'Cliente no começo, quem resolve no fim. O microfone do teclado funciona aqui.';
     return;
