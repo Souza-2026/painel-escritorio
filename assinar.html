@@ -12,6 +12,7 @@
 <style>
 :root{--azul:#1F3864;--fundo:#F4F5F7;--papel:#fff;--borda:#DDE1E7;--texto:#1B1F27;--apagado:#5A6270;--ok:#1D5A2E;--ok-f:#E2F2E6;--erro:#8A3A0A;--erro-f:#FDE7D9}
 *{box-sizing:border-box}
+button,a,input,label{touch-action:manipulation}
 body{margin:0;background:var(--fundo);color:var(--texto);font:16px/1.45 'IBM Plex Sans',system-ui,sans-serif}
 header{background:var(--azul);color:#fff;padding:14px 16px;position:sticky;top:0;z-index:5}
 header .t{font-weight:600;font-size:16px}header .s{font-size:13px;color:#C9D3E6}
@@ -45,7 +46,7 @@ input[type=text],input[inputmode]{border:1px solid #C5CBD4;border-radius:8px;min
   <form class="cartao form oculto" id="form">
     <div id="opcoes-box" class="form oculto"><div style="font-weight:600">Escolha uma opção</div><div id="opcoes" class="form"></div></div>
     <label>Nome completo <input type="text" id="nome" autocomplete="name" required></label>
-    <label>CPF <input inputmode="numeric" id="cpf" placeholder="000.000.000-00" required></label>
+    <label>CPF <input inputmode="numeric" id="cpf" name="cpf" placeholder="000.000.000-00" autocomplete="off" spellcheck="false" required></label>
     <div>
       <div style="display:flex;justify-content:space-between;align-items:end;margin-bottom:6px">
         <span style="font-size:14px;font-weight:600;color:#3A414D">Assine com o dedo no quadro</span>

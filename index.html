@@ -33,6 +33,7 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--fundo);color:var(--texto);font:15px/1.4 'IBM Plex Sans',system-ui,sans-serif}
 button,input,select,textarea{font:inherit}
+button,a,input,select,textarea,label,summary{touch-action:manipulation}
 .mono{font-family:'IBM Plex Mono',monospace}
 #app:not(.oculto){display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh}
 aside.lado{position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--azul);color:#fff;display:flex;flex-direction:column;gap:18px;padding:18px 14px}
@@ -484,9 +485,17 @@ const dataBR = iso => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso
 const mesBR = iso => { const n = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro']; return n[+iso.slice(5, 7) - 1] + ' de ' + iso.slice(0, 4); };
 // "1.621,00", "1621.5", "1621" -> número
 const numero = s => { s = String(s || '').trim().replace(/[R$\s]/g, ''); if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.'); const n = parseFloat(s); return isFinite(n) ? n : NaN; };
-function toast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 3500); }
+// role=status: o leitor de tela anuncia. Erro fica 8 s (dá tempo de ler a mensagem do banco); toque fecha antes.
+function toast(msg) {
+  const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.setAttribute('aria-live', 'polite');
+  t.textContent = msg; t.onclick = () => t.remove(); document.body.appendChild(t);
+  setTimeout(() => t.remove(), /falh|não consegui|inválid/i.test(msg) ? 8000 : 3500);
+}
 function fecharDialogos() { document.querySelectorAll('dialog[open]').forEach(d => d.close()); }
 document.querySelectorAll('[data-fechar]').forEach(b => b.onclick = () => b.closest('dialog').close());
+// Campos com dados do CLIENTE: o celular não deve sugerir os dados do próprio Gary nem corrigir CNPJ, CPF e nomes.
+document.querySelectorAll('form input:not([autocomplete]):not([type=file]):not([type=checkbox]):not([type=radio])').forEach(i => i.autocomplete = 'off');
+document.querySelectorAll('input[inputmode], input[data-mascara], #k-nome, #c-razao, #c-fant, #c-resp, #busca').forEach(i => i.spellcheck = false);
 
 const E = { clientes: [], equipe: [], extras: [], eu: null, filtroEsc: 'Todos', filtroPend: 'abertas', filtroResp: '', clienteAberto: null, pendEditando: null };
 
