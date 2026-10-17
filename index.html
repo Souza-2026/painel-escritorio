@@ -99,6 +99,8 @@ dialog{border:0;border-radius:12px;padding:0;width:min(560px,calc(100vw - 32px))
 dialog::backdrop{background:rgba(20,38,74,.45)}
 .dlg-cab{display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid var(--borda)}
 .dlg-cab h2{margin:0;font-size:18px}
+.confirma{width:min(420px,calc(100vw - 32px))}.confirma .form{padding:20px}.confirma p{margin:0;font-size:15px}
+.confirma-bot{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 .fechar{background:transparent;border:0;font-size:22px;cursor:pointer;width:44px;height:44px;color:var(--apagado)}
 .extrato td{padding:9px 16px}
 .aviso{padding:10px 12px;border-radius:8px;background:var(--aviso-f);color:var(--aviso);font-size:13px}
@@ -198,7 +200,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
       <div class="cartao" style="margin-top:16px">
         <div class="barra">
           <div class="pilulas" id="filtro-esc"></div>
-          <input id="busca" placeholder="Buscar cliente (qualquer palavra)" style="max-width:260px">
+          <input id="busca" aria-label="Buscar cliente" placeholder="Buscar cliente (qualquer palavra)…" style="max-width:260px">
         </div>
         <table>
           <thead><tr><th>Cliente</th><th>Escr.</th><th class="dir col-opc">Honorário</th><th class="cen col-opc">Vence</th><th class="dir">Saldo</th><th>Em aberto por mês</th><th class="dir">Situação</th></tr></thead>
@@ -230,7 +232,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
           <button class="btn" type="submit" id="r-botao">Lançar recebimento</button>
         </form>
         <div class="cartao">
-          <div class="barra"><strong id="rec-tit">Recebidos no mês</strong><input type="month" id="rec-mes" style="max-width:170px"></div>
+          <div class="barra"><strong id="rec-tit">Recebidos no mês</strong><input type="month" id="rec-mes" aria-label="Mês dos recebimentos" style="max-width:170px"></div>
           <table><thead><tr><th>Data</th><th>Cliente</th><th class="col-opc">Forma</th><th class="dir">Valor</th><th></th></tr></thead>
           <tbody id="t-rec"></tbody></table>
         </div>
@@ -290,8 +292,8 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
       <div class="topo"><div><h1>Serviços</h1><div class="sub">Tabela de preços dos serviços extras. Edite direto no campo: grava ao sair dele.</div></div></div>
       <div class="cartao" style="margin-top:16px">
         <form class="barra" id="form-serv" style="gap:8px">
-          <input id="s-nome" placeholder="Novo serviço" style="flex:1;min-width:200px">
-          <input id="s-preco" placeholder="Preço" inputmode="decimal" class="mono" style="max-width:150px">
+          <input id="s-nome" aria-label="Nome do novo serviço" placeholder="Novo serviço…" style="flex:1;min-width:200px">
+          <input id="s-preco" aria-label="Preço do novo serviço" placeholder="Preço…" inputmode="decimal" class="mono" style="max-width:150px">
           <button class="btn" type="submit">Incluir</button>
         </form>
         <table><thead><tr><th>Serviço</th><th>Preço</th><th></th></tr></thead><tbody id="t-serv"></tbody></table>
@@ -488,11 +490,47 @@ const numero = s => { s = String(s || '').trim().replace(/[R$\s]/g, ''); if (s.i
 // role=status: o leitor de tela anuncia. Erro fica 8 s (dá tempo de ler a mensagem do banco); toque fecha antes.
 function toast(msg) {
   const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.setAttribute('aria-live', 'polite');
-  t.textContent = msg; t.onclick = () => t.remove(); document.body.appendChild(t);
+  t.textContent = msg; t.onclick = () => t.remove();
+  // Dentro do diálogo aberto: no body ele ficava por trás do fundo escuro do diálogo.
+  ([...document.querySelectorAll('dialog[open]')].pop() || document.body).appendChild(t);
   setTimeout(() => t.remove(), /falh|não consegui|inválid/i.test(msg) ? 8000 : 3500);
 }
 function fecharDialogos() { document.querySelectorAll('dialog[open]').forEach(d => d.close()); }
-document.querySelectorAll('[data-fechar]').forEach(b => b.onclick = () => b.closest('dialog').close());
+// Confirmação no visual do painel: o confirm() do navegador fica minúsculo no celular.
+// O foco começa no botão de voltar, então Enter ou Esc nunca apagam nada sem querer.
+function confirmar(msg, sim = 'Confirmar', nao = 'Cancelar') {
+  return new Promise(ok => {
+    const d = document.createElement('dialog'); d.className = 'confirma';
+    d.innerHTML = '<div class="form"><p></p><div class="confirma-bot"><button type="button" class="btn sec" value="0"></button><button type="button" class="btn" value="1"></button></div></div>';
+    d.querySelector('p').textContent = msg;
+    const [bNao, bSim] = d.querySelectorAll('button'); bNao.textContent = nao; bSim.textContent = sim;
+    d.querySelectorAll('button').forEach(b => b.onclick = () => d.close(b.value));
+    d.onclose = () => { ok(d.returnValue === '1'); d.remove(); };
+    document.body.appendChild(d); d.showModal(); bNao.focus();
+  });
+}
+// Erro junto do campo: o navegador mostra o balão ao lado dele e põe o foco ali.
+function erroCampo(campo, msg) {
+  const i = typeof campo === 'string' ? $(campo) : campo;
+  i.setCustomValidity(msg); i.reportValidity();
+  i.addEventListener('input', () => i.setCustomValidity(''), { once: true });
+}
+// Fechar pelo × ou pelo Esc com algo digitado e não salvo pergunta antes. Quem salva fecha com .close() direto.
+const SEM_SALVAR = ['Fechar sem salvar? O que foi digitado se perde.', 'Fechar sem salvar', 'Continuar editando'];
+document.querySelectorAll('dialog').forEach(d => {
+  d.addEventListener('input', () => d.dataset.sujo = '1');
+  d.addEventListener('close', () => delete d.dataset.sujo);
+  d.addEventListener('cancel', async ev => {
+    if (!d.dataset.sujo) return;
+    ev.preventDefault();
+    if (await confirmar(...SEM_SALVAR)) d.close();
+  });
+});
+document.querySelectorAll('[data-fechar]').forEach(b => b.onclick = async () => {
+  const d = b.closest('dialog');
+  if (d.dataset.sujo && !await confirmar(...SEM_SALVAR)) return;
+  d.close();
+});
 // Campos com dados do CLIENTE: o celular não deve sugerir os dados do próprio Gary nem corrigir CNPJ, CPF e nomes.
 document.querySelectorAll('form input:not([autocomplete]):not([type=file]):not([type=checkbox]):not([type=radio])').forEach(i => i.autocomplete = 'off');
 document.querySelectorAll('input[inputmode], input[data-mascara], #k-nome, #c-razao, #c-fant, #c-resp, #busca').forEach(i => i.spellcheck = false);
@@ -710,7 +748,7 @@ function desenharClientes() {
 }
 $('#gerar-mes').onclick = async () => {
   const mes = $('#c-ref').value || mesAnterior();
-  if (!confirm('Lançar o honorário de ' + mesBR(mes + '-01') + ' (vence em ' + nomeMes(mesSeguinte(mes)) + ') para todos os clientes ativos? Quem já tem esse mês lançado não é lançado de novo.')) return;
+  if (!await confirmar('Lançar o honorário de ' + mesBR(mes + '-01') + ' (vence em ' + nomeMes(mesSeguinte(mes)) + ') para todos os clientes ativos? Quem já tem esse mês lançado não é lançado de novo.', 'Lançar honorários')) return;
   const { data, error } = await sb.rpc('gerar_honorarios', { p_competencia: mes + '-01' });
   if (error) return toast('Falhou: ' + error.message);
   toast(data ? data + ' honorários lançados.' : 'O mês já estava lançado para todos.');
@@ -739,7 +777,7 @@ async function abrirExtrato(id) {
   $('#x-linhas').querySelectorAll('[data-apagar]').forEach(b => b.onclick = () => apagarLancamento(+b.dataset.apagar));
 }
 async function apagarLancamento(id) {
-  if (!confirm('Apagar este lançamento? O saldo do cliente muda na hora.')) return;
+  if (!await confirmar('Apagar este lançamento? O saldo do cliente muda na hora.', 'Apagar')) return;
   const { error } = await sb.from('lancamentos').delete().eq('id', id);
   if (error) return toast('Falhou: ' + error.message);
   await carregarClientes(); abrirExtrato(E.clienteAberto.id); telaClientes();
@@ -777,9 +815,9 @@ $('#novo-cliente').onclick = () => abrirCliente(null);
 $('#form-cliente').onsubmit = async ev => {
   ev.preventDefault();
   const hon = $('#k-hon').value.trim() === '' ? 0 : numero($('#k-hon').value);
-  if (!isFinite(hon) || hon < 0) return toast('Honorário inválido.');
+  if (!isFinite(hon) || hon < 0) return erroCampo('#k-hon', 'Honorário inválido. Use só números, ex.: 1.500,00');
   const dia = $('#k-dia').value ? +$('#k-dia').value : null;
-  if (dia !== null && (dia < 1 || dia > 31)) return toast('Dia do pagamento entre 1 e 31.');
+  if (dia !== null && (dia < 1 || dia > 31)) return erroCampo('#k-dia', 'O dia do pagamento vai de 1 a 31.');
   const reg = {
     nome: $('#k-nome').value.trim().toUpperCase(), escritorio: $('#k-esc').value, honorario: hon,
     dia_pagamento: dia, forma_pagamento: $('#k-forma').value || null,
@@ -812,13 +850,14 @@ $('#e-servico').onchange = () => {
 $('#form-extra').onsubmit = async ev => {
   ev.preventDefault();
   const tipo = $('#e-tipo').value, valor = numero($('#e-valor').value);
-  if (!isFinite(valor) || valor === 0 || (tipo !== 'ajuste' && valor < 0)) return toast('Valor inválido.');
+  if (!isFinite(valor) || valor === 0 || (tipo !== 'ajuste' && valor < 0)) return erroCampo('#e-valor', tipo === 'ajuste' ? 'Informe um valor diferente de zero, ex.: 150,00 (negativo abate do saldo).' : 'Informe um valor maior que zero, ex.: 150,00');
   const { error } = await sb.from('lancamentos').insert({
     cliente_id: E.clienteAberto.id, tipo, valor, data: $('#e-data').value, descricao: $('#e-desc').value.trim(),
     competencia: $('#e-comp').value ? $('#e-comp').value + '-01' : null,
     servico_extra_id: tipo === 'extra' && $('#e-servico').value ? +$('#e-servico').value : null,
   });
   if (error) return toast('Falhou: ' + error.message);
+  delete $('#dlg-extrato').dataset.sujo; // lançado = salvo
   toast('Lançado.'); await carregarClientes(); abrirExtrato(E.clienteAberto.id); telaClientes();
 };
 
@@ -865,8 +904,8 @@ $('#rec-mes').onchange = listarRecebimentos;
 $('#form-rec').onsubmit = async ev => {
   ev.preventDefault();
   const id = +$('#r-cliente').value, valor = numero($('#r-valor').value);
-  if (!id) return toast('Escolha o cliente.');
-  if (!isFinite(valor) || valor <= 0) return toast('Valor inválido.');
+  if (!id) return erroCampo('#r-cliente', 'Escolha o cliente na lista.');
+  if (!isFinite(valor) || valor <= 0) return erroCampo('#r-valor', 'Informe um valor maior que zero, ex.: 1.500,00');
   const c = E.clientes.find(x => x.id === id);
   const comp = $('#r-comp').value ? $('#r-comp').value + '-01' : null;
   const rotulo = tipoRec === 'adiantamento' ? 'Adiantamento' : 'Recebimento';
@@ -897,7 +936,7 @@ async function listarRecebimentos() {
     <td style="width:44px"><button class="fechar" aria-label="Apagar recebimento" title="Apagar" data-apagar="${r.id}">✕</button></td></tr>`).join('')
     : '<tr><td colspan="5" class="vazio">Nenhum recebimento neste mês.</td></tr>';
   $('#t-rec').querySelectorAll('[data-apagar]').forEach(b => b.onclick = async () => {
-    if (!confirm('Apagar este lançamento? O cliente volta a dever esse valor.')) return;
+    if (!await confirmar('Apagar este lançamento? O cliente volta a dever esse valor.', 'Apagar')) return;
     const { error } = await sb.from('lancamentos').delete().eq('id', +b.dataset.apagar);
     if (error) return toast('Falhou: ' + error.message);
     await carregarClientes(); listarRecebimentos(); listarCreditos();
@@ -943,7 +982,7 @@ async function telaAssinaturas() {
   });
   $('#t-docs').querySelectorAll('[data-zap]').forEach(b => b.onclick = () => enviarWhats(acha(b.dataset.zap)));
   $('#t-docs').querySelectorAll('[data-cancelar]').forEach(b => b.onclick = async () => {
-    if (!confirm('Cancelar este documento? O link para de funcionar.')) return;
+    if (!await confirmar('Cancelar este documento? O link para de funcionar.', 'Cancelar documento', 'Voltar')) return;
     const { error } = await sb.from('documentos').update({ status: 'cancelado' }).eq('id', +b.dataset.cancelar);
     if (error) return toast('Falhou: ' + error.message);
     telaAssinaturas();
@@ -999,8 +1038,8 @@ $('#d-cli').onchange = () => {
 $('#form-doc').onsubmit = async ev => {
   ev.preventDefault();
   const arq = $('#d-arq').files[0];
-  if (!arq || arq.type !== 'application/pdf') return toast('Escolha um arquivo PDF.');
-  if (arq.size > 10 * 1024 * 1024) return toast('O PDF passa de 10 MB.');
+  if (!arq || arq.type !== 'application/pdf') return erroCampo('#d-arq', 'Escolha um arquivo PDF.');
+  if (arq.size > 10 * 1024 * 1024) return erroCampo('#d-arq', 'O PDF passa de 10 MB. Reduza o arquivo ou divida em partes.');
   $('#d-botao').disabled = true; $('#d-botao').textContent = 'Enviando…';
   try {
     const bytes = new Uint8Array(await arq.arrayBuffer());
@@ -1023,7 +1062,7 @@ $('#form-doc').onsubmit = async ev => {
     $('#dlg-doc').close();
     toast('Link gerado.');
     await telaAssinaturas();
-    if (confirm('Link pronto. Abrir o WhatsApp para enviar agora?')) enviarWhats(ins.data);
+    if (await confirmar('Link pronto. Abrir o WhatsApp para enviar agora?', 'Abrir WhatsApp', 'Agora não')) enviarWhats(ins.data);
   } catch (e) { toast('Falhou: ' + e.message); }
   finally { $('#d-botao').disabled = false; $('#d-botao').textContent = 'Gerar link de assinatura'; }
 };
@@ -1082,7 +1121,7 @@ $('#c-cli').onchange = async () => {
 /* ---- Receita (BrasilAPI) ---- */
 async function buscarCnpj() {
   const cnpj = $('#c-cnpj').value.replace(/\D/g, '');
-  if (cnpj.length !== 14) return toast('CNPJ precisa ter 14 números.');
+  if (cnpj.length !== 14) return erroCampo('#c-cnpj', 'O CNPJ precisa ter 14 números. Confira o que foi digitado.');
   cStatus('Consultando a Receita…');
   try {
     const r = await fetch('https://brasilapi.com.br/api/cnpj/v1/' + cnpj);
@@ -1306,7 +1345,7 @@ $('#form-contrato').onsubmit = async ev => {
     $('#dlg-contrato').close();
     await carregarClientes(); await telaAssinaturas();
     toast('Contrato gerado e pronto para assinar.');
-    if (confirm('Contrato pronto. Abrir o WhatsApp para enviar o link agora?')) enviarWhats(ins.data);
+    if (await confirmar('Contrato pronto. Abrir o WhatsApp para enviar o link agora?', 'Abrir WhatsApp', 'Agora não')) enviarWhats(ins.data);
   } catch (e) { toast('Falhou: ' + e.message); }
   finally { $('#c-enviar').disabled = false; $('#c-enviar').textContent = 'Gerar e enviar para assinatura'; }
 };
@@ -1327,8 +1366,8 @@ async function telaServicos() {
     let valor = inp.value.trim();
     if (campo === 'preco') {
       if (valor === '') valor = null;
-      else { valor = numero(valor); if (!isFinite(valor) || valor < 0) return toast('Preço inválido.'); }
-    } else if (!valor) return toast('O nome não pode ficar vazio.');
+      else { valor = numero(valor); if (!isFinite(valor) || valor < 0) return erroCampo(inp, 'Preço inválido. Use números, ex.: 250,00 (vazio = sem preço).'); }
+    } else if (!valor) return erroCampo(inp, 'O nome não pode ficar vazio.');
     const { error } = await sb.from('servicos_extras').update({ [campo]: valor }).eq('id', id);
     if (error) return toast('Falhou: ' + error.message);
     toast('Salvo.');
@@ -1350,8 +1389,8 @@ $('#form-serv').onsubmit = async ev => {
   ev.preventDefault();
   const nome = $('#s-nome').value.trim(), precoTxt = $('#s-preco').value.trim();
   const preco = precoTxt === '' ? null : numero(precoTxt);
-  if (!nome) return toast('Informe o nome do serviço.');
-  if (preco !== null && (!isFinite(preco) || preco < 0)) return toast('Preço inválido.');
+  if (!nome) return erroCampo('#s-nome', 'Informe o nome do serviço.');
+  if (preco !== null && (!isFinite(preco) || preco < 0)) return erroCampo('#s-preco', 'Preço inválido. Use números, ex.: 250,00');
   const { error } = await sb.from('servicos_extras').insert({ nome, preco });
   if (error) return toast(/duplicate|unique/i.test(error.message) ? 'Já existe um serviço com esse nome.' : 'Falhou: ' + error.message);
   $('#s-nome').value = ''; $('#s-preco').value = '';
