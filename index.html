@@ -34,7 +34,7 @@
 body{margin:0;background:var(--fundo);color:var(--texto);font:15px/1.4 'IBM Plex Sans',system-ui,sans-serif}
 button,input,select,textarea{font:inherit}
 button,a,input,select,textarea,label,summary{touch-action:manipulation}
-.mono{font-family:'IBM Plex Mono',monospace}
+.mono{font-family:'IBM Plex Mono',monospace;white-space:nowrap}
 #app:not(.oculto){display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh}
 aside.lado{position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--azul);color:#fff;display:flex;flex-direction:column;gap:18px;padding:18px 14px}
 .grupo{display:flex;flex-direction:column;gap:2px}
@@ -66,7 +66,7 @@ h1{margin:0;font-size:24px;font-weight:600}
 .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
 .kpi{background:var(--papel);border:1px solid var(--borda);border-radius:10px;padding:16px 18px}
 .kpi .r{font-size:13px;color:var(--apagado)}
-.kpi .v{font-size:24px;font-weight:600;margin-top:4px}
+.kpi .v{font-size:24px;font-weight:600;margin-top:4px;white-space:nowrap}
 .cartao{background:var(--papel);border:1px solid var(--borda);border-radius:10px}
 .barra{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--borda);flex-wrap:wrap}
 .pilulas{display:flex;gap:6px;flex-wrap:wrap}
@@ -78,7 +78,7 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:600;
 table{width:100%;border-collapse:collapse}
 th{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--apagado);text-align:left;padding:10px 16px;border-bottom:1px solid var(--borda)}
 td{padding:11px 16px;border-bottom:1px solid #EEF0F3;font-size:14px}
-tr.clic{cursor:pointer} tr.clic:hover td{background:#F8F9FB}
+tr.clic{cursor:pointer} tr.clic:hover td,tr.clic:focus-visible td{background:#F8F9FB} tr.clic:focus-visible{outline:2px solid var(--azul);outline-offset:-2px}
 .dir{text-align:right}.cen{text-align:center}
 .tag{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
 .t-cs{background:var(--azul);color:#fff}.t-ms{background:#D9DEE7;color:var(--azul)}
@@ -128,13 +128,14 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
   #app:not(.oculto){display:block}
   aside.lado{position:sticky;height:auto;z-index:20;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px 10px}
   aside.lado .marca small,.quem{display:none}
-  nav{grid-column:1/-1;grid-row:2;flex-direction:row;flex-wrap:wrap;gap:4px}
+  nav{grid-column:1/-1;grid-row:2;flex-direction:row;flex-wrap:nowrap;gap:4px;overflow-x:auto;scrollbar-width:none}
   .grupo,.itens,.grupo.fechado .itens{display:contents}
   .grupo-tit{display:none}
-  nav button[data-aba]{width:auto;flex:1 1 40%;justify-content:center;font-size:13px;padding:8px 6px;min-height:40px}
+  nav button[data-aba]{width:auto;flex:none;justify-content:center;font-size:13px;padding:8px 12px;min-height:40px;white-space:nowrap}
   nav button[data-aba] svg{display:none}
   .sair{width:auto}
   .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kpi .v{font-size:19px}.kpi{padding:14px}
   .col-opc{display:none}
   th,td{padding:10px 10px}
   main{padding:16px 12px 60px}
@@ -212,7 +213,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
           <input id="busca" aria-label="Buscar cliente" placeholder="Buscar cliente (qualquer palavra)…" style="max-width:260px">
         </div>
         <table>
-          <thead><tr><th>Cliente</th><th>Escr.</th><th class="dir col-opc">Honorário</th><th class="cen col-opc">Vence</th><th class="dir">Saldo</th><th>Em aberto por mês</th><th class="dir">Situação</th></tr></thead>
+          <thead><tr><th>Cliente</th><th>Escr.</th><th class="dir col-opc">Honorário</th><th class="cen col-opc">Vence</th><th class="dir">Saldo</th><th class="col-opc">Em aberto por mês</th><th class="dir">Situação</th></tr></thead>
           <tbody id="t-clientes"></tbody>
         </table>
       </div>
@@ -780,15 +781,18 @@ function desenharClientes() {
     .filter(c => casaCliente(c, termo));
   $('#t-clientes').innerHTML = l.length ? l.map(c => {
     const [s, cls] = situacao(c);
-    return `<tr class="clic" data-id="${c.id}"><td style="font-weight:500">${esc(c.nome)}</td>
+    return `<tr class="clic" tabindex="0" data-id="${c.id}"><td style="font-weight:500">${esc(c.nome)}</td>
       <td><span class="tag ${c.escritorio === 'CS' ? 't-cs' : 't-ms'}">${c.escritorio || '—'}</span></td>
       <td class="dir mono col-opc">${Number(c.honorario) ? brl(c.honorario) : '—'}</td>
       <td class="cen col-opc">${c.dia_pagamento ? String(c.dia_pagamento).padStart(2, '0') : '—'}</td>
       <td class="dir mono" style="font-weight:600">${brl(c.saldo)}</td>
-      <td style="white-space:normal;line-height:1.9">${tagsPorMes(c.id)}</td>
+      <td class="col-opc" style="white-space:normal;line-height:1.9">${tagsPorMes(c.id)}</td>
       <td class="dir"><span class="tag ${cls}">${s}</span></td></tr>`;
   }).join('') : '<tr><td colspan="7" class="vazio">Nenhum cliente neste filtro.</td></tr>';
-  $('#t-clientes').querySelectorAll('tr.clic').forEach(tr => tr.onclick = () => abrirExtrato(+tr.dataset.id));
+  $('#t-clientes').querySelectorAll('tr.clic').forEach(tr => {
+    tr.onclick = () => abrirExtrato(+tr.dataset.id);
+    tr.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirExtrato(+tr.dataset.id); } };
+  });
 }
 $('#gerar-mes').onclick = async () => {
   const mes = $('#c-ref').value || mesAnterior();
