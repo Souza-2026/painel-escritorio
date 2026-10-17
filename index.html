@@ -215,7 +215,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
           <input id="busca" aria-label="Buscar cliente" placeholder="Buscar cliente (qualquer palavra)…" style="max-width:260px">
         </div>
         <table>
-          <thead><tr><th>Cliente</th><th>Escr.</th><th class="dir col-opc">Honorário</th><th class="cen col-opc">Vence</th><th class="dir">Saldo</th><th class="col-opc">Em aberto por mês</th><th class="dir col-opc">Situação</th></tr></thead>
+          <thead><tr><th>Cliente</th><th>Escr.</th><th class="dir col-opc">Honorário</th><th class="cen col-opc">Vence</th><th class="dir" id="th-saldo">Saldo</th><th class="col-opc" id="th-meses">Em aberto por mês</th><th class="dir col-opc">Situação</th></tr></thead>
           <tbody id="t-clientes"></tbody>
         </table>
       </div>
@@ -549,7 +549,7 @@ document.querySelectorAll('[data-fechar]').forEach(b => b.onclick = async () => 
 document.querySelectorAll('form input:not([autocomplete]):not([type=file]):not([type=checkbox]):not([type=radio])').forEach(i => i.autocomplete = 'off');
 document.querySelectorAll('input[inputmode], input[data-mascara], #k-nome, #c-razao, #c-fant, #c-resp, #busca').forEach(i => i.spellcheck = false);
 
-const E = { clientes: [], equipe: [], extras: [], eu: null, filtroEsc: 'Todos', filtroPend: 'abertas', filtroResp: '', clienteAberto: null, pendEditando: null };
+const E = { clientes: [], equipe: [], extras: [], eu: null, filtroEsc: 'Todos', verMes: true, filtroPend: 'abertas', filtroResp: '', clienteAberto: null, pendEditando: null };
 
 /* ============================ LOGIN ============================ */
 let modoCadastro = false;
@@ -717,10 +717,15 @@ function irPara(aba) {
 }
 
 /* ============================ CLIENTES ============================ */
+// Valor que a tabela mostra: só o mês da Referência (padrão, pedido do Gary em 17/10/2026,
+// para não misturar meses) ou o saldo de todos os meses somados.
+function valorTabela(c) {
+  return E.verMes ? Math.round((E.porMes?.[c.id]?.[$('#c-ref').value] || 0) * 100) / 100 : Number(c.saldo);
+}
 function situacao(c) {
-  const dia = new Date().getDate();
-  if (Number(c.saldo) < 0) return ['Crédito ' + brl(-c.saldo), 't-ok'];
-  if (Number(c.saldo) === 0) return [Number(c.honorario) > 0 ? 'Em dia' : 'Não cobra', Number(c.honorario) > 0 ? 't-ok' : 't-cinza'];
+  const dia = new Date().getDate(), v = valorTabela(c);
+  if (v < 0) return ['Crédito ' + brl(-v), 't-ok'];
+  if (v === 0) return [Number(c.honorario) > 0 ? 'Em dia' : 'Não cobra', Number(c.honorario) > 0 ? 't-ok' : 't-cinza'];
   if (!c.dia_pagamento) return ['Em aberto', 't-info'];
   if (c.dia_pagamento < dia) return ['Venceu dia ' + String(c.dia_pagamento).padStart(2, '0'), 't-erro'];
   if (c.dia_pagamento - dia <= 3) return [c.dia_pagamento === dia ? 'Vence hoje' : 'Vence em ' + (c.dia_pagamento - dia) + ' dias', 't-aviso'];
@@ -748,8 +753,11 @@ async function telaClientes() {
     ['Falta receber', brl(falta), aRec ? Math.round(rec / aRec * 100) + '% recebido' : 'honorários ainda não lançados'],
     ['Pendências abertas', String(abertas ?? 0), 'abertas, em andamento ou aguardando'],
   ].map(([r, v, t]) => `<div class="kpi"><div class="r">${r}</div><div class="v">${v}</div><div class="r">${t}</div></div>`).join('');
-  $('#filtro-esc').innerHTML = ['Todos', 'CS', 'MS', 'Devendo', 'Com crédito'].map(f => `<button class="${E.filtroEsc === f ? 'ativo' : ''}" data-f="${f}">${f}</button>`).join('');
-  $('#filtro-esc').querySelectorAll('button').forEach(b => b.onclick = () => { E.filtroEsc = b.dataset.f; telaClientes(); });
+  $('#filtro-esc').innerHTML = [['mes', 'Só ' + nomeMes(ref)], ['total', 'Todos os meses']].map(([k, r]) => `<button class="${E.verMes === (k === 'mes') ? 'ativo' : ''}" data-ver="${k}">${r}</button>`).join('')
+    + '<span style="width:1px;background:var(--borda-forte);margin:4px 4px"></span>'
+    + ['Todos', 'CS', 'MS', 'Devendo', 'Com crédito'].map(f => `<button class="${E.filtroEsc === f ? 'ativo' : ''}" data-f="${f}">${f}</button>`).join('');
+  $('#filtro-esc').querySelectorAll('[data-f]').forEach(b => b.onclick = () => { E.filtroEsc = b.dataset.f; telaClientes(); });
+  $('#filtro-esc').querySelectorAll('[data-ver]').forEach(b => b.onclick = () => { E.verMes = b.dataset.ver === 'mes'; telaClientes(); });
   desenharClientes();
 }
 $('#c-ref').onchange = () => telaClientes();
@@ -778,8 +786,10 @@ function tagsPorMes(id) {
 $('#busca').oninput = () => desenharClientes();
 function desenharClientes() {
   const termo = $('#busca').value;
+  $('#th-saldo').textContent = E.verMes ? 'Saldo de ' + mesCurto($('#c-ref').value + '-01') : 'Saldo total';
+  $('#th-meses').classList.toggle('oculto', E.verMes);
   const l = E.clientes.filter(c => c.ativo)
-    .filter(c => E.filtroEsc === 'Todos' || (E.filtroEsc === 'Devendo' ? Number(c.saldo) > 0 : E.filtroEsc === 'Com crédito' ? Number(c.saldo) < 0 : c.escritorio === E.filtroEsc))
+    .filter(c => E.filtroEsc === 'Todos' || (E.filtroEsc === 'Devendo' ? valorTabela(c) > 0 : E.filtroEsc === 'Com crédito' ? valorTabela(c) < 0 : c.escritorio === E.filtroEsc))
     .filter(c => casaCliente(c, termo));
   $('#t-clientes').innerHTML = l.length ? l.map(c => {
     const [s, cls] = situacao(c);
@@ -787,8 +797,8 @@ function desenharClientes() {
       <td><span class="tag ${c.escritorio === 'CS' ? 't-cs' : 't-ms'}">${c.escritorio || '—'}</span></td>
       <td class="dir mono col-opc">${Number(c.honorario) ? brl(c.honorario) : '—'}</td>
       <td class="cen col-opc">${c.dia_pagamento ? String(c.dia_pagamento).padStart(2, '0') : '—'}</td>
-      <td class="dir mono" style="font-weight:600">${brl(c.saldo)}</td>
-      <td class="col-opc" style="white-space:normal;line-height:1.9">${tagsPorMes(c.id)}</td>
+      <td class="dir mono" style="font-weight:600">${brl(valorTabela(c))}</td>
+      ${E.verMes ? '' : `<td class="col-opc" style="white-space:normal;line-height:1.9">${tagsPorMes(c.id)}</td>`}
       <td class="dir col-opc"><span class="tag ${cls}">${s}</span></td></tr>`;
   }).join('') : '<tr><td colspan="7" class="vazio">Nenhum cliente neste filtro.</td></tr>';
   $('#t-clientes').querySelectorAll('tr.clic').forEach(tr => {
