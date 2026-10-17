@@ -110,6 +110,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
 .link{background:none;border:0;color:var(--azul);cursor:pointer;text-decoration:underline;padding:8px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--texto);color:#fff;padding:12px 18px;border-radius:8px;font-size:14px;z-index:99;max-width:calc(100vw - 32px)}
 .oculto{display:none!important}
+.so-cel{display:none}
 .ck{flex-direction:row!important;align-items:center;gap:10px;font-weight:500!important}
 .ck input{width:22px;height:22px;min-height:0;flex:none}
 .ditar{padding:16px;display:flex;flex-direction:column;gap:12px;border-color:var(--azul)}
@@ -137,6 +138,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
   .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
   .kpi .v{font-size:19px}.kpi{padding:14px}
   .col-opc{display:none}
+  .so-cel{display:block;margin-top:4px}  /* situação do cliente vai embaixo do nome: a coluna não cabe */
   th,td{padding:10px 10px}
   main{padding:16px 12px 60px}
 }
@@ -213,7 +215,7 @@ dialog::backdrop{background:rgba(20,38,74,.45)}
           <input id="busca" aria-label="Buscar cliente" placeholder="Buscar cliente (qualquer palavra)…" style="max-width:260px">
         </div>
         <table>
-          <thead><tr><th>Cliente</th><th>Escr.</th><th class="dir col-opc">Honorário</th><th class="cen col-opc">Vence</th><th class="dir">Saldo</th><th class="col-opc">Em aberto por mês</th><th class="dir">Situação</th></tr></thead>
+          <thead><tr><th>Cliente</th><th>Escr.</th><th class="dir col-opc">Honorário</th><th class="cen col-opc">Vence</th><th class="dir">Saldo</th><th class="col-opc">Em aberto por mês</th><th class="dir col-opc">Situação</th></tr></thead>
           <tbody id="t-clientes"></tbody>
         </table>
       </div>
@@ -781,13 +783,13 @@ function desenharClientes() {
     .filter(c => casaCliente(c, termo));
   $('#t-clientes').innerHTML = l.length ? l.map(c => {
     const [s, cls] = situacao(c);
-    return `<tr class="clic" tabindex="0" data-id="${c.id}"><td style="font-weight:500">${esc(c.nome)}</td>
+    return `<tr class="clic" tabindex="0" data-id="${c.id}"><td style="font-weight:500">${esc(c.nome)}<div class="so-cel"><span class="tag ${cls}">${s}</span></div></td>
       <td><span class="tag ${c.escritorio === 'CS' ? 't-cs' : 't-ms'}">${c.escritorio || '—'}</span></td>
       <td class="dir mono col-opc">${Number(c.honorario) ? brl(c.honorario) : '—'}</td>
       <td class="cen col-opc">${c.dia_pagamento ? String(c.dia_pagamento).padStart(2, '0') : '—'}</td>
       <td class="dir mono" style="font-weight:600">${brl(c.saldo)}</td>
       <td class="col-opc" style="white-space:normal;line-height:1.9">${tagsPorMes(c.id)}</td>
-      <td class="dir"><span class="tag ${cls}">${s}</span></td></tr>`;
+      <td class="dir col-opc"><span class="tag ${cls}">${s}</span></td></tr>`;
   }).join('') : '<tr><td colspan="7" class="vazio">Nenhum cliente neste filtro.</td></tr>';
   $('#t-clientes').querySelectorAll('tr.clic').forEach(tr => {
     tr.onclick = () => abrirExtrato(+tr.dataset.id);
